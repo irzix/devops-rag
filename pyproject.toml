@@ -1,0 +1,18 @@
+[project]
+name = "devops-rag"
+version = "0.1.0"
+description = "A modular FastAPI SaaS template styled after NestJS architectural concepts"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.111.0",
+    "uvicorn>=0.30.0",
+]
+
+[project.authors]
+name = "Anette"
+
+# Tool configurations (like ESLint/Prettier configuration blocks in package.json)
+[tool.ruff]
+line-length = 88
+select = ["E", "F", "I"]
