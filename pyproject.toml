@@ -17,6 +17,7 @@ dependencies = [
     "bcrypt>=4.1.0",
     "python-multipart>=0.0.9",
     "greenlet>=3.0.0",
+    "langchain-openai>=0.1.0",
 ]
 
 [project.authors]

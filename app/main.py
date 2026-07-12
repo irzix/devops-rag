@@ -5,6 +5,7 @@ from app.core.database import create_db_and_tables
 from app.modules.auth.router import router as auth_router
 from app.modules.servers.router import router as servers_router
 from app.modules.guardrails.service import init_and_seed_db
+from app.modules.chat.router import router as chat_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -23,6 +24,7 @@ app = FastAPI(
 
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(servers_router, prefix="/api/v1/servers", tags=["Servers"])
+app.include_router(chat_router, prefix="/api/v1/chat", tags=["Chat & Agent"])
 
 @app.get("/health", tags=["Health"])
 def health_check():
