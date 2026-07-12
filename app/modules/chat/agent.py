@@ -206,15 +206,16 @@ async def execute_ssh_command(server_id: int, command: str) -> str:
                     await ws.send_json({"type": "stderr", "data": line})
                 
                 exit_status = await process.wait()
+                exit_code = exit_status.exit_status if exit_status.exit_status is not None else 0
                 
                 await ws.send_json({
                     "type": "stdout",
-                    "data": f"[Process finished with code {exit_status}]\n"
+                    "data": f"[Process finished with code {exit_code}]\n"
                 })
                 
                 stdout_str = "".join(stdout_accumulated)
                 stderr_str = "".join(stderr_accumulated)
-                return f"Exit Code: {exit_status}\nStdout:\n{stdout_str}\nStderr:\n{stderr_str}"
+                return f"Exit Code: {exit_code}\nStdout:\n{stdout_str}\nStderr:\n{stderr_str}"
     except Exception as e:
         return f"SSH Connection Failed to {server.ip_address}: {str(e)}"
 

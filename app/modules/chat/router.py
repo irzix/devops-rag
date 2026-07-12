@@ -257,10 +257,11 @@ async def websocket_endpoint(
                                 stderr_accumulated.append(line)
                                 await websocket.send_json({"type": "stderr", "data": line})
                             exit_status = await process.wait()
+                            exit_code = exit_status.exit_status if exit_status.exit_status is not None else 0
 
                     await websocket.send_json({
                         "type": "stdout",
-                        "data": f"[Process finished with code {exit_status}]\n"
+                        "data": f"[Process finished with code {exit_code}]\n"
                     })
 
                     stdout_str = "".join(stdout_accumulated)
@@ -279,7 +280,7 @@ async def websocket_endpoint(
                         resume_prompt = (
                             f"User approved execution of action '{action_id}'.\n"
                             f"Command '{action.command}' executed on server '{server.name}'.\n"
-                            f"Exit Code: {exit_status}\n"
+                            f"Exit Code: {exit_code}\n"
                             f"Stdout:\n{stdout_str}\n"
                             f"Stderr:\n{stderr_str}\n\n"
                             f"Please analyze these outputs and provide your final response to the user."
