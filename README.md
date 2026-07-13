@@ -1,6 +1,6 @@
-# DevOps-RAG 🚀
+# DevOps-Copilot 🚀
 
-An open-source, AI-driven DevOps Agent and CLI Client designed to manage raw root/bare-metal servers securely. It features persistent credential encryption, real-time terminal streaming, and semantic security guardrails using a local vector database.
+An open-source, AI-driven DevOps Copilot and CLI Client designed to manage raw root/bare-metal servers securely. It features persistent credential encryption, real-time terminal streaming, and semantic security guardrails using a local vector database.
 
 ---
 
@@ -44,12 +44,12 @@ uv pip install -e .
 ### 2. Authenticate
 Configure the server URL and log in to get your JWT access token:
 ```bash
-devops-rag login
+devops-copilot login
 ```
 
 ### 3. Interactive Chat
 Start the real-time DevOps chat session:
 ```bash
-devops-rag chat
+devops-copilot chat
 ```
 *Ask the agent to check stats or run actions. Approve state-modifying commands directly in the prompt.*

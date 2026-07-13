@@ -51,8 +51,8 @@ def get_llm(callbacks=None) -> ChatOpenAI:
         streaming=True,
         callbacks=callbacks or [],
         default_headers={
-            "HTTP-Referer": "https://github.com/irzix/devops-rag",
-            "X-Title": "DevOps RAG Agent"
+            "HTTP-Referer": "https://github.com/irzix/devops-copilot",
+            "X-Title": "DevOps Copilot Agent"
         }
     )
 

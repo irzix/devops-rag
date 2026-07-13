@@ -16,8 +16,8 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(
-    title="DevOps-RAG API",
-    description="An AI-driven DevOps management agent for bare-metal servers.",
+    title="DevOps-Copilot API",
+    description="An AI-driven DevOps management copilot for bare-metal servers.",
     version="0.1.0",
     lifespan=lifespan
 )

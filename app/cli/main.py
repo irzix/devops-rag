@@ -8,7 +8,7 @@ from typing import Optional
 
 from app.cli.config import load_config, save_config
 
-app = typer.Typer(name="devops-rag", help="AI-driven DevOps Agent CLI Client")
+app = typer.Typer(name="devops-copilot", help="AI-driven DevOps Copilot CLI Client")
 
 @app.command("login")
 def login(
@@ -16,8 +16,8 @@ def login(
     username: Optional[str] = typer.Option(None, help="Your administrator username")
 ):
     """
-    Authenticate with the central DevOps-RAG backend and retrieve an access token.
-    Saves configurations locally in ~/.config/devops-rag/config.json.
+    Authenticate with the central DevOps-Copilot backend and retrieve an access token.
+    Saves configurations locally in ~/.config/devops-copilot/config.json.
     """
     if not server_url:
         server_url = typer.prompt("Enter DevOps Agent server URL (e.g. http://localhost:8000)")
@@ -172,7 +172,7 @@ def chat():
     """
     config = load_config()
     if not config:
-        typer.secho("Error: No configuration found. Please run 'devops-rag login' first.", fg=typer.colors.RED, err=True)
+        typer.secho("Error: No configuration found. Please run 'devops-copilot login' first.", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1)
 
     server_url = config["server_url"]
@@ -184,7 +184,7 @@ def chat():
     try:
         response = httpx.get(f"{server_url}/api/v1/chat/sessions", headers=headers, timeout=10.0)
         if response.status_code == 401:
-            typer.secho("Session expired. Please run 'devops-rag login' again.", fg=typer.colors.RED, err=True)
+            typer.secho("Session expired. Please run 'devops-copilot login' again.", fg=typer.colors.RED, err=True)
             raise typer.Exit(code=1)
         response.raise_for_status()
         try:

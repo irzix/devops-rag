@@ -1,7 +1,7 @@
 [project]
-name = "devops-rag"
-version = "0.1.2"
-description = "A modular FastAPI SaaS template styled after NestJS architectural concepts"
+name = "devops-copilot"
+version = "0.1.0"
+description = "An AI-driven DevOps Copilot and CLI Client for managing bare-metal servers securely"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -29,7 +29,7 @@ server = [
 ]
 
 [project.scripts]
-devops-rag = "app.cli.main:app"
+devops-copilot = "app.cli.main:app"
 
 [[project.authors]]
 name = "irzix"
