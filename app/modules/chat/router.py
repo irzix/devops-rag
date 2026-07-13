@@ -1,9 +1,10 @@
 import jwt
+import json
 from fastapi import APIRouter, Depends, HTTPException, status, WebSocket, WebSocketDisconnect, Query
 from typing import List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 
 from app.core.config import settings
 from app.core.database import get_session, async_session_maker
@@ -20,6 +21,8 @@ from app.modules.chat.schema import (
 )
 from app.modules.chat.agent import (
     create_agent_executor,
+    get_llm,
+    inject_experiential_memory,
     StreamingCallbackHandler,
     active_websocket,
     active_session_id,
@@ -27,6 +30,7 @@ from app.modules.chat.agent import (
     decrypt_data,
     asyncssh
 )
+from app.modules.knowledge.service import index_lesson_learned, index_command_output
 
 router = APIRouter()
 
@@ -127,11 +131,6 @@ async def generate_postmortem(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No messages found in this session to analyze.")
 
     transcript = "\n".join([f"[{m.role.upper()}]: {m.content}" for m in messages])
-    
-    from app.modules.chat.agent import get_llm
-    from langchain_core.messages import SystemMessage, HumanMessage as LCHumanMessage
-    import json
-
     llm = get_llm()
     prompt = """You are an Expert DevOps Incident Analyzer performing an Experiential Learning (ExpeL / Reflexion) postmortem.
 Analyze the following troubleshooting conversation transcript between an admin and an AI agent.
@@ -146,7 +145,7 @@ Extract the core troubleshooting lesson into the exact JSON schema below. Output
 }"""
 
     try:
-        response = await llm.ainvoke([SystemMessage(content=prompt), LCHumanMessage(content=f"TRANSCRIPT:\n{transcript[:15000]}")])
+        response = await llm.ainvoke([SystemMessage(content=prompt), HumanMessage(content=f"TRANSCRIPT:\n{transcript[:15000]}")])
         content_text = response.content
         if isinstance(content_text, list):
             content_text = " ".join([str(c) for c in content_text])
@@ -162,7 +161,6 @@ Extract the core troubleshooting lesson into the exact JSON schema below. Output
         clean_json = clean_json.strip()
 
         data = json.loads(clean_json)
-        from app.modules.knowledge.service import index_lesson_learned
         index_lesson_learned(
             server_name=data.get("server_name", "unknown"),
             problem=data.get("problem", "Unknown Issue"),
@@ -259,7 +257,6 @@ async def websocket_endpoint(
                     agent_executor = create_agent_executor(callbacks=[callback])
 
                     # Auto-inject Experiential Learning memory into context if matches exist
-                    from app.modules.chat.agent import inject_experiential_memory
                     enriched_content = inject_experiential_memory(content)
 
                     # Invoke agent compiled StateGraph using messages schema
@@ -380,7 +377,6 @@ async def websocket_endpoint(
 
                     # Auto-index approved command output into RAG knowledge base
                     try:
-                        from app.modules.knowledge.service import index_command_output
                         index_command_output(server.name, action.command, stdout_str, stderr_str, exit_code)
                     except Exception:
                         pass
@@ -405,7 +401,6 @@ async def websocket_endpoint(
                         )
 
                         # Auto-inject Experiential Learning memory into resume prompt
-                        from app.modules.chat.agent import inject_experiential_memory
                         enriched_resume = inject_experiential_memory(resume_prompt)
 
                         # Invoke the agent graph with the resume message

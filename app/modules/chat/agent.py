@@ -18,6 +18,15 @@ from app.core.security import decrypt_data
 from app.modules.servers.models import Server
 from app.modules.servers.service import servers_service
 from app.modules.chat.models import AgentAction
+from app.modules.guardrails.service import is_command_safe
+from app.modules.knowledge.service import (
+    index_command_output,
+    search as knowledge_search,
+    index_log,
+    index_config,
+    index_lesson_learned,
+    search_lessons_learned as service_search_lessons,
+)
 
 # Context variables to track active execution details across async threads
 active_websocket = contextvars.ContextVar("active_websocket")
@@ -123,7 +132,6 @@ async def execute_ssh_command(server_id: int | str, command: str) -> str:
     """
     try:
         # 1. Run semantic safety guardrail
-        from app.modules.guardrails.service import is_command_safe
         is_safe, warning, similarity = is_command_safe(command)
         if not is_safe:
             return f"Execution Blocked by Guardrail: {warning} (similarity index: {similarity:.2f})"
@@ -249,7 +257,6 @@ async def execute_ssh_command(server_id: int | str, command: str) -> str:
 
                     # Auto-index execution output into RAG knowledge base
                     try:
-                        from app.modules.knowledge.service import index_command_output
                         index_command_output(server.name, command, stdout_str, stderr_str, exit_code)
                     except Exception:
                         pass  # Non-critical: don't break execution if indexing fails
@@ -273,8 +280,7 @@ async def search_knowledge(query: str, sources: list[str] | None = None) -> str:
     Use this tool to recall past command outputs, server logs, or config file contents.
     """
     try:
-        from app.modules.knowledge.service import search
-        return search(query, collection_names=sources, n_results=3)
+        return knowledge_search(query, collection_names=sources, n_results=3)
     except Exception as e:
         return f"Knowledge search error: {str(e)}"
 
@@ -328,7 +334,6 @@ async def fetch_server_logs(server_id: int | str, log_source: str = "journalctl 
 
         # Auto-index fetched logs
         try:
-            from app.modules.knowledge.service import index_log
             index_log(server.name, log_source, stdout)
         except Exception:
             pass
@@ -397,7 +402,6 @@ async def fetch_server_config(server_id: int | str, file_path: str) -> str:
 
         # Auto-index the config file
         try:
-            from app.modules.knowledge.service import index_config
             index_config(server.name, file_path, stdout)
         except Exception:
             pass
@@ -432,7 +436,6 @@ async def record_lesson_learned(
             except Exception:
                 return f"Error: Server '{server_id}' not found."
 
-        from app.modules.knowledge.service import index_lesson_learned
         index_lesson_learned(
             server_name=server.name,
             problem=problem,
@@ -453,8 +456,7 @@ async def search_lessons_learned(query: str) -> str:
     Always call this before troubleshooting an incident or error to see what worked and what didn't work previously.
     """
     try:
-        from app.modules.knowledge.service import search_lessons_learned as _search_lessons
-        return _search_lessons(query)
+        return service_search_lessons(query)
     except Exception as e:
         return f"Error searching lessons learned: {str(e)}"
 
@@ -507,8 +509,7 @@ def inject_experiential_memory(prompt: str) -> str:
     Ensures the 'Retrieve Next Time -> Future Decision' loop is 100% systemic and guaranteed.
     """
     try:
-        from app.modules.knowledge.service import search_lessons_learned
-        retrieved_lessons = search_lessons_learned(prompt, n_results=2)
+        retrieved_lessons = service_search_lessons(prompt, n_results=2)
         if "No matching lessons" not in retrieved_lessons and "No lessons learned recorded" not in retrieved_lessons:
             return (
                 f"{prompt}\n\n"
