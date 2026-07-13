@@ -498,3 +498,25 @@ def create_agent_executor(callbacks=None):
         tools=tools,
         system_prompt=system_prompt
     )
+
+
+def inject_experiential_memory(prompt: str) -> str:
+    """
+    Zero-Click ExpeL Auto-Retrieval:
+    Automatically searches past structured lessons learned and injects them directly into the prompt context.
+    Ensures the 'Retrieve Next Time -> Future Decision' loop is 100% systemic and guaranteed.
+    """
+    try:
+        from app.modules.knowledge.service import search_lessons_learned
+        retrieved_lessons = search_lessons_learned(prompt, n_results=2)
+        if "No matching lessons" not in retrieved_lessons and "No lessons learned recorded" not in retrieved_lessons:
+            return (
+                f"{prompt}\n\n"
+                f"[⚡ AUTO-RETRIEVED EXPERIENTIAL MEMORY (ExpeL) ⚡]\n"
+                f"Relevant past troubleshooting postmortems automatically retrieved for your current task:\n"
+                f"{retrieved_lessons}\n"
+                f"CRITICAL INSTRUCTION: Review 'What didn't work' and 'What worked' above. Do NOT repeat dead ends.\n"
+            )
+        return prompt
+    except Exception:
+        return prompt

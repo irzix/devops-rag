@@ -258,9 +258,13 @@ async def websocket_endpoint(
                     callback = StreamingCallbackHandler(websocket)
                     agent_executor = create_agent_executor(callbacks=[callback])
 
+                    # Auto-inject Experiential Learning memory into context if matches exist
+                    from app.modules.chat.agent import inject_experiential_memory
+                    enriched_content = inject_experiential_memory(content)
+
                     # Invoke agent compiled StateGraph using messages schema
                     inputs = {
-                        "messages": chat_history + [HumanMessage(content=content)]
+                        "messages": chat_history + [HumanMessage(content=enriched_content)]
                     }
                     agent_response = await agent_executor.ainvoke(inputs)
 
@@ -400,9 +404,13 @@ async def websocket_endpoint(
                             f"Please analyze these outputs and provide your final response to the user."
                         )
 
+                        # Auto-inject Experiential Learning memory into resume prompt
+                        from app.modules.chat.agent import inject_experiential_memory
+                        enriched_resume = inject_experiential_memory(resume_prompt)
+
                         # Invoke the agent graph with the resume message
                         agent_response = await agent_executor.ainvoke({
-                            "messages": [HumanMessage(content=resume_prompt)]
+                            "messages": [HumanMessage(content=enriched_resume)]
                         })
 
                         ai_text = agent_response["messages"][-1].content
