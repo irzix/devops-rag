@@ -407,6 +407,58 @@ async def fetch_server_config(server_id: int | str, file_path: str) -> str:
         return f"Error fetching config: {str(e)}"
 
 
+@tool
+async def record_lesson_learned(
+    server_id: int | str,
+    problem: str,
+    real_cause: str,
+    what_didnt_work: str,
+    what_worked: str,
+    time_to_resolve: str
+) -> str:
+    """
+    Record a structured lesson learned (postmortem) after successfully resolving an incident or bug on a server.
+    This populates the knowledge base (ExpeL/Reflexion) to resolve similar issues instantly next time.
+    """
+    try:
+        owner_id = active_owner_id.get()
+        async with async_session_maker() as session:
+            try:
+                is_id = isinstance(server_id, int) or (isinstance(server_id, str) and server_id.isdigit())
+                if is_id:
+                    server = await servers_service.get_server_by_id(session, int(server_id) if isinstance(server_id, str) else server_id, owner_id)
+                else:
+                    server = await servers_service.get_server_by_name(session, str(server_id), owner_id)
+            except Exception:
+                return f"Error: Server '{server_id}' not found."
+
+        from app.modules.knowledge.service import index_lesson_learned
+        index_lesson_learned(
+            server_name=server.name,
+            problem=problem,
+            real_cause=real_cause,
+            what_didnt_work=what_didnt_work,
+            what_worked=what_worked,
+            time_to_resolve=time_to_resolve
+        )
+        return f"Lesson Learned recorded for {server.name}: Problem '{problem}' resolved via '{what_worked}'."
+    except Exception as e:
+        return f"Error recording lesson learned: {str(e)}"
+
+
+@tool
+async def search_lessons_learned(query: str) -> str:
+    """
+    Semantic search across structured past lessons learned (postmortems).
+    Always call this before troubleshooting an incident or error to see what worked and what didn't work previously.
+    """
+    try:
+        from app.modules.knowledge.service import search_lessons_learned as _search_lessons
+        return _search_lessons(query)
+    except Exception as e:
+        return f"Error searching lessons learned: {str(e)}"
+
+
 # Define list of tools available to the Agent
 tools = [
     list_available_servers,
@@ -414,23 +466,28 @@ tools = [
     search_knowledge,
     fetch_server_logs,
     fetch_server_config,
+    record_lesson_learned,
+    search_lessons_learned,
 ]
 
 # Setup agent prompt template
 system_prompt = """You are a highly capable DevOps AI Assistant managing servers via SSH.
-You have tools to list servers, execute commands, fetch logs/configs, and search past knowledge.
+You have tools to list servers, execute commands, fetch logs/configs, search past knowledge, and record/search structured lessons learned.
 
 IMPORTANT INSTRUCTIONS:
 1. Always call `list_available_servers` first if you do not know the server_id.
-2. Use `search_knowledge` to recall past command outputs, logs, or configs before re-running commands.
-3. Use `fetch_server_logs` to pull and index server logs (journalctl, syslog, etc.).
-4. Use `fetch_server_config` to read and index config files (nginx, systemd, etc.).
-5. Any command you execute will be checked by a semantic guardrail.
-6. If a tool returns 'PAUSED: REQUIRES_APPROVAL: <action_id>', you MUST:
+2. EXPERIENTIAL LEARNING PROTOCOL (ExpeL / Reflexion):
+   - Before debugging or troubleshooting ANY server error or incident: ALWAYS call `search_lessons_learned` first to check if a similar issue occurred before. Pay close attention to "What didn't work" to avoid dead ends.
+   - After successfully resolving a server issue, bug, or incident: ALWAYS call `record_lesson_learned` with the structured breakdown (Problem, Real Cause, What didn't work, What worked, Time to Resolve).
+3. Use `search_knowledge` to recall general past command outputs, logs, or configs before re-running commands.
+4. Use `fetch_server_logs` to pull and index server logs (journalctl, syslog, etc.).
+5. Use `fetch_server_config` to read and index config files (nginx, systemd, etc.).
+6. Any command you execute will be checked by a semantic guardrail.
+7. If a tool returns 'PAUSED: REQUIRES_APPROVAL: <action_id>', you MUST:
    - STOP all execution immediately. Do not attempt to call any other tools.
    - Reply to the user explaining that the command requires their approval.
    - Explicitly mention the Action ID: '<action_id>'.
-7. Be concise and report the final outputs clearly.
+8. Be concise and report the final outputs clearly.
 """
 
 def create_agent_executor(callbacks=None):

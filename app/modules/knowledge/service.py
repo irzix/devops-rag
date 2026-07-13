@@ -5,10 +5,11 @@ from typing import List, Optional
 # Shared ChromaDB persistent client (same data volume as guardrails)
 client = chromadb.PersistentClient(path="data/chroma_db")
 
-# --- 3 Separate Collections ---
+# --- 4 Separate Collections ---
 command_history = client.get_or_create_collection(name="command_history")
 server_logs = client.get_or_create_collection(name="server_logs")
 server_configs = client.get_or_create_collection(name="server_configs")
+lessons_learned = client.get_or_create_collection(name="lessons_learned")
 
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 50
@@ -84,11 +85,61 @@ def index_config(server_name: str, file_path: str, content: str):
         )
 
 
+def index_lesson_learned(
+    server_name: str,
+    problem: str,
+    real_cause: str,
+    what_didnt_work: str,
+    what_worked: str,
+    time_to_resolve: str
+):
+    """Index a structured post-incident postmortem (Experiential Learning / ExpeL) into lessons_learned."""
+    doc = (
+        f"Problem: {problem}\n"
+        f"Real Cause: {real_cause}\n"
+        f"What didn't work: {what_didnt_work}\n"
+        f"What worked: {what_worked}\n"
+        f"Time to Resolve: {time_to_resolve}"
+    )
+    metadata = {
+        "server_name": server_name,
+        "problem": problem,
+        "real_cause": real_cause,
+        "what_worked": what_worked,
+        "time_to_resolve": time_to_resolve,
+        "source": "lessons_learned",
+    }
+    lessons_learned.add(
+        ids=[f"lsn_{uuid.uuid4().hex[:12]}"],
+        documents=[doc],
+        metadatas=[metadata],
+    )
+
+
+def search_lessons_learned(query: str, n_results: int = 3) -> str:
+    """Semantic search specifically across structured past lessons learned."""
+    if lessons_learned.count() == 0:
+        return "No lessons learned recorded yet in the vector database."
+    
+    results = lessons_learned.query(query_texts=[query], n_results=min(n_results, lessons_learned.count()))
+    if not results or not results["documents"] or not results["documents"][0]:
+        return "No matching lessons learned found."
+    
+    cards = []
+    for doc, meta in zip(results["documents"][0], results["metadatas"][0]):
+        cards.append(
+            f"[Lesson Learned - Server: {meta.get('server_name', '?')}]\n"
+            f"{doc}"
+        )
+    return "\n\n---\n\n".join(cards)
+
+
 # Map collection name -> collection object
 _COLLECTIONS = {
     "command_history": command_history,
     "server_logs": server_logs,
     "server_configs": server_configs,
+    "lessons_learned": lessons_learned,
 }
 
 

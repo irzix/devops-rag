@@ -5,6 +5,7 @@ An open-source, AI-driven DevOps Copilot and CLI Client designed to manage raw r
 ---
 
 ## Key Features
+- **Experiential Learning (ExpeL / Reflexion Postmortems):** Automatically distills complex debugging sessions into structured `Lessons Learned` cards (`Problem`, `Real Cause`, `What didn't work`, `What worked`) indexed into ChromaDB. The agent performs semantic retrieval on past postmortems before troubleshooting new errors to avoid dead ends.
 - **Lean RAG Knowledge Base:** Automatically chunks and indexes executed SSH command outputs, logs, and server configs into separate **ChromaDB** collections, enabling the agent to search past server history before executing new commands.
 - **Semantic Guardrails:** Uses local vector search to intercept and block dangerous terminal commands.
 - **Human-in-the-Loop (HITL):** Enforces admin approval (`[y/N]`) inside the terminal for any state-modifying actions with clean prompt synchronization.
@@ -47,9 +48,14 @@ Configure the server URL and log in to get your JWT access token:
 devops-copilot login
 ```
 
-### 3. Interactive Chat
+### 3. Interactive Chat & Auto-Postmortems
 Start the real-time DevOps chat session:
 ```bash
 devops-copilot chat
 ```
 *Ask the agent to check stats or run actions. Approve state-modifying commands directly in the prompt.*
+
+Extract and index a structured Experiential Lesson Learned from any completed troubleshooting session:
+```bash
+devops-copilot lesson <session_id>
+```

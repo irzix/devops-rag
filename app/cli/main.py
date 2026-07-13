@@ -247,5 +247,46 @@ def chat():
     # 3. Enter the async WebSocket execution loop
     asyncio.run(run_chat_loop(server_url, token, session_id))
 
+
+@app.command("lesson")
+def lesson(
+    session_id: int = typer.Argument(..., help="The Chat Session ID to analyze and extract postmortem from")
+):
+    """
+    Extract a structured Experiential Lesson Learned (ExpeL Postmortem) from a past debugging session
+    and index it into the permanent vector database.
+    """
+    config = load_config()
+    if not config:
+        typer.secho("Error: No configuration found. Please run 'devops-copilot login' first.", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+
+    server_url = config["server_url"]
+    token = config["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    typer.echo(f"Analyzing session #{session_id} and extracting Experiential Lesson Learned...")
+    try:
+        response = httpx.post(f"{server_url}/api/v1/chat/sessions/{session_id}/postmortem", headers=headers, timeout=60.0)
+        if response.status_code == 404:
+            typer.secho(f"Session #{session_id} not found or no access.", fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=1)
+        response.raise_for_status()
+        res_data = response.json()
+        lesson_data = res_data.get("lesson_learned", {})
+        typer.secho("\n✨ [Experiential Lesson Learned Recorded successfully!]", fg=typer.colors.GREEN, bold=True)
+        typer.echo(f"  • Server:           {lesson_data.get('server_name', 'N/A')}")
+        typer.echo(f"  • Problem:          {lesson_data.get('problem', 'N/A')}")
+        typer.echo(f"  • Real Cause:       {lesson_data.get('real_cause', 'N/A')}")
+        typer.echo(f"  • What didn't work: {lesson_data.get('what_didnt_work', 'N/A')}")
+        typer.echo(f"  • What worked:      {lesson_data.get('what_worked', 'N/A')}")
+        typer.echo(f"  • Time to Resolve:  {lesson_data.get('time_to_resolve', 'N/A')}\n")
+    except typer.Exit:
+        raise
+    except Exception as e:
+        typer.secho(f"Error generating lesson learned: {str(e)}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+
+
 if __name__ == "__main__":
     app()

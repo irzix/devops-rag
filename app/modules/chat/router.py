@@ -105,6 +105,76 @@ async def delete_session(
     await session.commit()
     return {"status": "success", "message": f"Chat session {session_id} deleted successfully"}
 
+@router.post("/sessions/{session_id}/postmortem")
+async def generate_postmortem(
+    session_id: int,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session)
+):
+    """
+    Generate an automatic Post-Incident Lesson Learned (Postmortem) from the session history
+    using Experiential Learning (ExpeL) protocol, and index it into ChromaDB.
+    """
+    sess_statement = select(ChatSession).where(ChatSession.id == session_id, ChatSession.user_id == current_user.id)
+    sess_result = await session.exec(sess_statement)
+    if not sess_result.first():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat session not found")
+
+    msg_statement = select(ChatMessage).where(ChatMessage.session_id == session_id).order_by(ChatMessage.created_at.asc())
+    msg_result = await session.exec(msg_statement)
+    messages = msg_result.all()
+    if not messages:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No messages found in this session to analyze.")
+
+    transcript = "\n".join([f"[{m.role.upper()}]: {m.content}" for m in messages])
+    
+    from app.modules.chat.agent import get_llm
+    from langchain_core.messages import SystemMessage, HumanMessage as LCHumanMessage
+    import json
+
+    llm = get_llm()
+    prompt = """You are an Expert DevOps Incident Analyzer performing an Experiential Learning (ExpeL / Reflexion) postmortem.
+Analyze the following troubleshooting conversation transcript between an admin and an AI agent.
+Extract the core troubleshooting lesson into the exact JSON schema below. Output ONLY valid JSON:
+{
+  "server_name": "The name or IP of the server where the incident occurred (or 'unknown' if not clear)",
+  "problem": "A concise 2-5 word description of the problem (e.g. OOMKilled, Nginx 502 Bad Gateway)",
+  "real_cause": "The actual root cause discovered during troubleshooting",
+  "what_didnt_work": "Summary of commands or approaches that failed or didn't fix the issue",
+  "what_worked": "The exact resolution or deployment that fixed the issue",
+  "time_to_resolve": "Estimated time taken to resolve (e.g. 15 min, 3 steps)"
+}"""
+
+    try:
+        response = await llm.ainvoke([SystemMessage(content=prompt), LCHumanMessage(content=f"TRANSCRIPT:\n{transcript[:15000]}")])
+        content_text = response.content
+        if isinstance(content_text, list):
+            content_text = " ".join([str(c) for c in content_text])
+        
+        # Clean markdown code block if present
+        clean_json = content_text.strip()
+        if clean_json.startswith("```json"):
+            clean_json = clean_json[7:]
+        if clean_json.startswith("```"):
+            clean_json = clean_json[3:]
+        if clean_json.endswith("```"):
+            clean_json = clean_json[:-3]
+        clean_json = clean_json.strip()
+
+        data = json.loads(clean_json)
+        from app.modules.knowledge.service import index_lesson_learned
+        index_lesson_learned(
+            server_name=data.get("server_name", "unknown"),
+            problem=data.get("problem", "Unknown Issue"),
+            real_cause=data.get("real_cause", "N/A"),
+            what_didnt_work=data.get("what_didnt_work", "N/A"),
+            what_worked=data.get("what_worked", "N/A"),
+            time_to_resolve=data.get("time_to_resolve", "N/A")
+        )
+        return {"status": "success", "lesson_learned": data}
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to extract postmortem: {str(e)}")
+
 # --- WebSocket Real-Time Chat & Execution Tunnel ---
 
 @router.websocket("/ws")
