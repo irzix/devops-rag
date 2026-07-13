@@ -1,18 +1,70 @@
-# DevOps-Copilot 🚀
+# DevOps Copilot 🚀
 
-An open-source, AI-driven DevOps Copilot and CLI Client designed to manage raw root/bare-metal servers securely. It features persistent credential encryption, real-time terminal streaming, and semantic security guardrails using a local vector database.
+**An autonomous, self-learning AI DevOps Assistant & CLI Client that manages bare-metal servers with Experiential Memory (`ExpeL`), Semantic Guardrails, and Real-Time SSH Tunneling.**
+
+---
+
+## 💡 About The Project
+
+Managing infrastructure via traditional CLI tools or basic AI wrappers often leads to dangerous mistakes, repetitive debugging dead-ends, and fragmented server logs. **DevOps Copilot** redefines server management by bringing **Closed-Loop Experiential Learning (ExpeL)** directly to your terminal.
+
+Unlike standard AI chat wrappers that forget previous troubleshooting sessions, `DevOps Copilot` builds a permanent, structured **ChromaDB Vector Knowledge Base** of your infrastructure:
+
+- **🧠 Zero-Click Experiential Learning (ExpeL & Reflexion):** Every time an incident or bug is diagnosed and resolved, the agent distills the entire session into a structured Postmortem (`Problem`, `Real Cause`, `What didn't work`, `What worked`). Before tackling new errors, relevant past lessons are **automatically retrieved and injected** into the agent's context—ensuring it *never repeats a dead end*.
+- **🛡️ Semantic Security Guardrails:** Local vector search intercepts and blocks catastrophic shell commands (e.g., `rm -rf /`, `mkfs`) before they ever touch your servers.
+- **🧑‍💻 Human-in-the-Loop (HITL) Approvals:** State-modifying actions dynamically prompt for explicit admin confirmation (`[y/N]`) inside the terminal with clean prompt synchronization.
+- **⚡ Real-Time Async Execution Tunnel:** Streams LLM reasoning, SSH `stdout`, and `stderr` line-by-line via resilient WebSockets with automatic reconnection and exponential backoff.
+- **🔒 Zero-Trust Credential Encryption:** Passwords and SSH private keys are encrypted at rest using AES-256 (`Fernet`).
+
+---
+
+## 🏛️ System Architecture & ExpeL Loop
+
+```
++-----------------------------------------------------------------------------------+
+|                                 DevOps Copilot CLI                                |
+|  (Typer Async Client + Real-Time WebSocket Tunnel + [y/N] Terminal Approval)      |
++-----------------------------------------------------------------------------------+
+                                   |           ^
+                   REST Auth/CRUD  |           | WebSocket Stream (stdout/stderr)
+                                   v           |
++-----------------------------------------------------------------------------------+
+|                              FastAPI Backend Server                               |
+|                                                                                   |
+|  +------------------------+   +-----------------------+   +--------------------+  |
+|  |     Auth Module        |   |    Servers Module     |   | Guardrails Module  |  |
+|  |  (JWT & AES Fernet)    |   |  (AsyncSSH Execution) |   | (Vector Blacklist) |  |
+|  +------------------------+   +-----------------------+   +--------------------+  |
+|                                                                                   |
+|  +-----------------------------------------------------------------------------+  |
+|  |                              Chat & Agent Module                            |  |
+|  |   LangChain StateGraph + Zero-Click ExpeL Injection + OpenRouter LLM        |  |
+|  +-----------------------------------------------------------------------------+  |
+|                                       |                                           |
+|                                       v                                           |
+|  +-----------------------------------------------------------------------------+  |
+|  |                            Knowledge Base (ChromaDB)                        |  |
+|  |  [command_history]   [server_logs]   [server_configs]   [lessons_learned]   |  |
+|  +-----------------------------------------------------------------------------+  |
++-----------------------------------------------------------------------------------+
+```
+
+### The Closed-Loop Experiential Learning (`ExpeL`) Flow:
+1. **Observe & Act:** Agent connects via `AsyncSSH`, runs non-destructive diagnostics or approved actions, and indexes outputs into `command_history` and `server_logs`.
+2. **Judge & Extract:** When an incident is resolved, running `devops-copilot lesson <session_id>` triggers an automated LLM extraction (`Problem`, `Real Cause`, `What didn't work`, `What worked`) stored in `lessons_learned`.
+3. **Zero-Click Injection (Future Decision):** On any future chat turn or command error, the `inject_experiential_memory` middleware queries `lessons_learned` and injects proven solutions directly into the prompt context.
 
 ---
 
 ## Key Features
-- **Experiential Learning (ExpeL / Reflexion Postmortems):** Automatically distills complex debugging sessions into structured `Lessons Learned` cards (`Problem`, `Real Cause`, `What didn't work`, `What worked`) indexed into ChromaDB. The agent performs semantic retrieval on past postmortems before troubleshooting new errors to avoid dead ends.
-- **Lean RAG Knowledge Base:** Automatically chunks and indexes executed SSH command outputs, logs, and server configs into separate **ChromaDB** collections, enabling the agent to search past server history before executing new commands.
+- **Experiential Learning (ExpeL / Reflexion Postmortems):** Distills complex debugging sessions into structured `Lessons Learned` cards indexed into ChromaDB with zero-click context injection.
+- **Lean RAG Knowledge Base:** Automatically chunks and indexes executed SSH command outputs, logs, and server configs into separate **ChromaDB** collections.
 - **Semantic Guardrails:** Uses local vector search to intercept and block dangerous terminal commands.
-- **Human-in-the-Loop (HITL):** Enforces admin approval (`[y/N]`) inside the terminal for any state-modifying actions with clean prompt synchronization.
+- **Human-in-the-Loop (HITL):** Enforces admin approval (`[y/N]`) inside the terminal for any state-modifying actions.
 - **CLI Connection Resilience:** Automatically reconnects to the WebSocket server using exponential backoff if the network drops or the server restarts.
 - **Real-Time Streaming:** Streams LLM thoughts and active SSH `stdout`/`stderr` line-by-line using WebSockets with 30s execution timeouts.
 - **Encrypted Credentials:** Securely encrypts passwords and SSH private keys using Fernet (AES-256).
-- **Server & Session CRUD:** Full REST API support for updating/deleting server connections and deleting chat sessions (with cascade cleanup).
+- **Server & Session CRUD:** Full REST API support for updating/deleting server connections and deleting chat sessions.
 - **Flexible AI Models:** Powered by **OpenRouter** (supports Llama 3, Gemini, GPT, etc.).
 
 ---
