@@ -271,6 +271,13 @@ async def websocket_endpoint(
                     stdout_str = "".join(stdout_accumulated)
                     stderr_str = "".join(stderr_accumulated)
 
+                    # Auto-index approved command output into RAG knowledge base
+                    try:
+                        from app.modules.knowledge.service import index_command_output
+                        index_command_output(server.name, action.command, stdout_str, stderr_str, exit_code)
+                    except Exception:
+                        pass
+
                     # 5. Invoke agent loop with the execution output
                     ws_token = active_websocket.set(websocket)
                     sess_token = active_session_id.set(action.session_id)

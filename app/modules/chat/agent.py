@@ -244,25 +244,169 @@ async def execute_ssh_command(server_id: int | str, command: str) -> str:
                 
                 stdout_str = "".join(stdout_accumulated)
                 stderr_str = "".join(stderr_accumulated)
+
+                # Auto-index execution output into RAG knowledge base
+                try:
+                    from app.modules.knowledge.service import index_command_output
+                    index_command_output(server.name, command, stdout_str, stderr_str, exit_code)
+                except Exception:
+                    pass  # Non-critical: don't break execution if indexing fails
+
                 return f"Exit Code: {exit_code}\nStdout:\n{stdout_str}\nStderr:\n{stderr_str}"
     except Exception as e:
         return f"Tool Execution Error: {str(e)}"
 
+
+@tool
+async def search_knowledge(query: str, sources: list[str] | None = None) -> str:
+    """
+    Search the DevOps knowledge base for previously collected information.
+    Sources can include: 'command_history', 'server_logs', 'server_configs'.
+    If sources is None, all collections are searched.
+    Use this tool to recall past command outputs, server logs, or config file contents.
+    """
+    try:
+        from app.modules.knowledge.service import search
+        return search(query, collection_names=sources, n_results=3)
+    except Exception as e:
+        return f"Knowledge search error: {str(e)}"
+
+
+@tool
+async def fetch_server_logs(server_id: int | str, log_source: str = "journalctl -n 100 --no-pager") -> str:
+    """
+    Fetch recent logs from a target server via SSH, stream them to the user, and auto-index them.
+    Default log source is journalctl. Can also use: 'tail -n 100 /var/log/syslog', etc.
+    """
+    try:
+        owner_id = active_owner_id.get()
+        async with async_session_maker() as session:
+            try:
+                is_id = isinstance(server_id, int) or (isinstance(server_id, str) and server_id.isdigit())
+                if is_id:
+                    server = await servers_service.get_server_by_id(session, int(server_id) if isinstance(server_id, str) else server_id, owner_id)
+                else:
+                    server = await servers_service.get_server_by_name(session, str(server_id), owner_id)
+            except Exception:
+                return f"Error: Server '{server_id}' not found."
+
+        credential = decrypt_data(server.encrypted_credential)
+        conn_args = {
+            "host": server.ip_address,
+            "port": server.ssh_port,
+            "username": server.ssh_username,
+            "known_hosts": None,
+        }
+        if server.ssh_auth_type == "password":
+            conn_args["password"] = credential
+        else:
+            conn_args["client_keys"] = [asyncssh.import_private_key(credential)]
+
+        ws = active_websocket.get()
+        await ws.send_json({"type": "stdout", "data": f"\n[Fetching logs from {server.name}]: {log_source}\n"})
+
+        async with asyncssh.connect(**conn_args) as conn:
+            result = await conn.run(log_source, check=False)
+            stdout = result.stdout or ""
+            if isinstance(stdout, bytes):
+                stdout = stdout.decode("utf-8", errors="replace")
+            await ws.send_json({"type": "stdout", "data": stdout})
+
+        # Auto-index fetched logs
+        try:
+            from app.modules.knowledge.service import index_log
+            index_log(server.name, log_source, stdout)
+        except Exception:
+            pass
+
+        return f"Fetched {len(stdout)} chars of logs from {server.name}.\n{stdout[:2000]}"
+    except Exception as e:
+        return f"Error fetching logs: {str(e)}"
+
+
+@tool
+async def fetch_server_config(server_id: int | str, file_path: str) -> str:
+    """
+    Read a config file from a target server via SSH (e.g. /etc/nginx/nginx.conf),
+    stream it to the user, and auto-index it for future reference.
+    """
+    try:
+        owner_id = active_owner_id.get()
+        async with async_session_maker() as session:
+            try:
+                is_id = isinstance(server_id, int) or (isinstance(server_id, str) and server_id.isdigit())
+                if is_id:
+                    server = await servers_service.get_server_by_id(session, int(server_id) if isinstance(server_id, str) else server_id, owner_id)
+                else:
+                    server = await servers_service.get_server_by_name(session, str(server_id), owner_id)
+            except Exception:
+                return f"Error: Server '{server_id}' not found."
+
+        credential = decrypt_data(server.encrypted_credential)
+        conn_args = {
+            "host": server.ip_address,
+            "port": server.ssh_port,
+            "username": server.ssh_username,
+            "known_hosts": None,
+        }
+        if server.ssh_auth_type == "password":
+            conn_args["password"] = credential
+        else:
+            conn_args["client_keys"] = [asyncssh.import_private_key(credential)]
+
+        ws = active_websocket.get()
+        await ws.send_json({"type": "stdout", "data": f"\n[Reading {file_path} from {server.name}]\n"})
+
+        async with asyncssh.connect(**conn_args) as conn:
+            result = await conn.run(f"cat {file_path}", check=False)
+            stdout = result.stdout or ""
+            if isinstance(stdout, bytes):
+                stdout = stdout.decode("utf-8", errors="replace")
+            stderr = result.stderr or ""
+            if isinstance(stderr, bytes):
+                stderr = stderr.decode("utf-8", errors="replace")
+
+            if result.exit_status != 0:
+                return f"Error reading {file_path}: {stderr}"
+
+            await ws.send_json({"type": "stdout", "data": stdout})
+
+        # Auto-index the config file
+        try:
+            from app.modules.knowledge.service import index_config
+            index_config(server.name, file_path, stdout)
+        except Exception:
+            pass
+
+        return f"Config file {file_path} from {server.name}:\n{stdout[:3000]}"
+    except Exception as e:
+        return f"Error fetching config: {str(e)}"
+
+
 # Define list of tools available to the Agent
-tools = [list_available_servers, execute_ssh_command]
+tools = [
+    list_available_servers,
+    execute_ssh_command,
+    search_knowledge,
+    fetch_server_logs,
+    fetch_server_config,
+]
 
 # Setup agent prompt template
 system_prompt = """You are a highly capable DevOps AI Assistant managing servers via SSH.
-You have tools to list available servers and execute bash commands on those servers.
+You have tools to list servers, execute commands, fetch logs/configs, and search past knowledge.
 
-IMPORTANT SECURITY INSTRUCTIONS:
+IMPORTANT INSTRUCTIONS:
 1. Always call `list_available_servers` first if you do not know the server_id.
-2. Any command you execute will be checked by a semantic guardrail.
-3. If a tool returns 'PAUSED: REQUIRES_APPROVAL: <action_id>', you MUST:
+2. Use `search_knowledge` to recall past command outputs, logs, or configs before re-running commands.
+3. Use `fetch_server_logs` to pull and index server logs (journalctl, syslog, etc.).
+4. Use `fetch_server_config` to read and index config files (nginx, systemd, etc.).
+5. Any command you execute will be checked by a semantic guardrail.
+6. If a tool returns 'PAUSED: REQUIRES_APPROVAL: <action_id>', you MUST:
    - STOP all execution immediately. Do not attempt to call any other tools.
    - Reply to the user explaining that the command requires their approval.
    - Explicitly mention the Action ID: '<action_id>'.
-4. Be concise and report the final outputs clearly.
+7. Be concise and report the final outputs clearly.
 """
 
 def create_agent_executor(callbacks=None):
