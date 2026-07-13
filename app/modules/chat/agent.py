@@ -1,5 +1,6 @@
 import re
 import uuid
+import asyncio
 import contextvars
 import asyncssh
 from typing import List, Tuple
@@ -218,41 +219,47 @@ async def execute_ssh_command(server_id: int | str, command: str) -> str:
         stdout_accumulated = []
         stderr_accumulated = []
 
-        async with asyncssh.connect(**conn_args) as conn:
-            async with conn.create_process(command) as process:
-                # Stream stdout line-by-line
-                async for line in process.stdout:
-                    if isinstance(line, bytes):
-                        line = line.decode("utf-8", errors="replace")
-                    stdout_accumulated.append(line)
-                    await ws.send_json({"type": "stdout", "data": line})
-                
-                # Stream stderr line-by-line
-                async for line in process.stderr:
-                    if isinstance(line, bytes):
-                        line = line.decode("utf-8", errors="replace")
-                    stderr_accumulated.append(line)
-                    await ws.send_json({"type": "stderr", "data": line})
-                
-                exit_status = await process.wait()
-                exit_code = exit_status.exit_status if exit_status.exit_status is not None else 0
-                
-                await ws.send_json({
-                    "type": "stdout",
-                    "data": f"[Process finished with code {exit_code}]\n"
-                })
-                
-                stdout_str = "".join(stdout_accumulated)
-                stderr_str = "".join(stderr_accumulated)
+        async def run_with_timeout():
+            async with asyncssh.connect(**conn_args) as conn:
+                async with conn.create_process(command) as process:
+                    # Stream stdout line-by-line
+                    async for line in process.stdout:
+                        if isinstance(line, bytes):
+                            line = line.decode("utf-8", errors="replace")
+                        stdout_accumulated.append(line)
+                        await ws.send_json({"type": "stdout", "data": line})
+                    
+                    # Stream stderr line-by-line
+                    async for line in process.stderr:
+                        if isinstance(line, bytes):
+                            line = line.decode("utf-8", errors="replace")
+                        stderr_accumulated.append(line)
+                        await ws.send_json({"type": "stderr", "data": line})
+                    
+                    exit_status = await process.wait()
+                    exit_code = exit_status.exit_status if exit_status.exit_status is not None else 0
+                    
+                    await ws.send_json({
+                        "type": "stdout",
+                        "data": f"[Process finished with code {exit_code}]\n"
+                    })
+                    
+                    stdout_str = "".join(stdout_accumulated)
+                    stderr_str = "".join(stderr_accumulated)
 
-                # Auto-index execution output into RAG knowledge base
-                try:
-                    from app.modules.knowledge.service import index_command_output
-                    index_command_output(server.name, command, stdout_str, stderr_str, exit_code)
-                except Exception:
-                    pass  # Non-critical: don't break execution if indexing fails
+                    # Auto-index execution output into RAG knowledge base
+                    try:
+                        from app.modules.knowledge.service import index_command_output
+                        index_command_output(server.name, command, stdout_str, stderr_str, exit_code)
+                    except Exception:
+                        pass  # Non-critical: don't break execution if indexing fails
 
-                return f"Exit Code: {exit_code}\nStdout:\n{stdout_str}\nStderr:\n{stderr_str}"
+                    return f"Exit Code: {exit_code}\nStdout:\n{stdout_str}\nStderr:\n{stderr_str}"
+
+        try:
+            return await asyncio.wait_for(run_with_timeout(), timeout=30.0)
+        except asyncio.TimeoutError:
+            return f"Error: Command execution timed out after 30 seconds on {server.name}."
     except Exception as e:
         return f"Tool Execution Error: {str(e)}"
 
@@ -305,12 +312,19 @@ async def fetch_server_logs(server_id: int | str, log_source: str = "journalctl 
         ws = active_websocket.get()
         await ws.send_json({"type": "stdout", "data": f"\n[Fetching logs from {server.name}]: {log_source}\n"})
 
-        async with asyncssh.connect(**conn_args) as conn:
-            result = await conn.run(log_source, check=False)
-            stdout = result.stdout or ""
-            if isinstance(stdout, bytes):
-                stdout = stdout.decode("utf-8", errors="replace")
-            await ws.send_json({"type": "stdout", "data": stdout})
+        async def run_logs_with_timeout():
+            async with asyncssh.connect(**conn_args) as conn:
+                result = await conn.run(log_source, check=False)
+                stdout = result.stdout or ""
+                if isinstance(stdout, bytes):
+                    stdout = stdout.decode("utf-8", errors="replace")
+                await ws.send_json({"type": "stdout", "data": stdout})
+                return stdout
+
+        try:
+            stdout = await asyncio.wait_for(run_logs_with_timeout(), timeout=30.0)
+        except asyncio.TimeoutError:
+            return f"Error: Fetching logs timed out after 30 seconds on {server.name}."
 
         # Auto-index fetched logs
         try:
@@ -357,19 +371,29 @@ async def fetch_server_config(server_id: int | str, file_path: str) -> str:
         ws = active_websocket.get()
         await ws.send_json({"type": "stdout", "data": f"\n[Reading {file_path} from {server.name}]\n"})
 
-        async with asyncssh.connect(**conn_args) as conn:
-            result = await conn.run(f"cat {file_path}", check=False)
-            stdout = result.stdout or ""
-            if isinstance(stdout, bytes):
-                stdout = stdout.decode("utf-8", errors="replace")
-            stderr = result.stderr or ""
-            if isinstance(stderr, bytes):
-                stderr = stderr.decode("utf-8", errors="replace")
+        async def run_config_with_timeout():
+            async with asyncssh.connect(**conn_args) as conn:
+                result = await conn.run(f"cat {file_path}", check=False)
+                stdout = result.stdout or ""
+                if isinstance(stdout, bytes):
+                    stdout = stdout.decode("utf-8", errors="replace")
+                stderr = result.stderr or ""
+                if isinstance(stderr, bytes):
+                    stderr = stderr.decode("utf-8", errors="replace")
 
-            if result.exit_status != 0:
-                return f"Error reading {file_path}: {stderr}"
+                if result.exit_status != 0:
+                    return f"Error reading {file_path}: {stderr}"
 
-            await ws.send_json({"type": "stdout", "data": stdout})
+                await ws.send_json({"type": "stdout", "data": stdout})
+                return stdout
+
+        try:
+            res = await asyncio.wait_for(run_config_with_timeout(), timeout=30.0)
+            if res.startswith("Error reading"):
+                return res
+            stdout = res
+        except asyncio.TimeoutError:
+            return f"Error: Reading config timed out after 30 seconds on {server.name}."
 
         # Auto-index the config file
         try:

@@ -72,6 +72,39 @@ async def get_messages(
     msg_result = await session.exec(msg_statement)
     return msg_result.all()
 
+@router.delete("/sessions/{session_id}")
+async def delete_session(
+    session_id: int,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session)
+):
+    """Delete a chat session and all its associated messages and actions."""
+    # Verify session ownership
+    sess_statement = select(ChatSession).where(ChatSession.id == session_id, ChatSession.user_id == current_user.id)
+    sess_result = await session.exec(sess_statement)
+    chat_session = sess_result.first()
+    if not chat_session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Chat session not found"
+        )
+
+    # Delete messages
+    msg_statement = select(ChatMessage).where(ChatMessage.session_id == session_id)
+    msg_result = await session.exec(msg_statement)
+    for msg in msg_result.all():
+        await session.delete(msg)
+
+    # Delete actions
+    act_statement = select(AgentAction).where(AgentAction.session_id == session_id)
+    act_result = await session.exec(act_statement)
+    for act in act_result.all():
+        await session.delete(act)
+
+    await session.delete(chat_session)
+    await session.commit()
+    return {"status": "success", "message": f"Chat session {session_id} deleted successfully"}
+
 # --- WebSocket Real-Time Chat & Execution Tunnel ---
 
 @router.websocket("/ws")

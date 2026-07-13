@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_session
 from app.modules.auth import User
 from app.modules.auth.service import get_current_user
-from app.modules.servers.schema import ServerCreate, ServerResponse, CommandRequest, CommandResponse
+from app.modules.servers.schema import ServerCreate, ServerUpdate, ServerResponse, CommandRequest, CommandResponse
 from app.modules.servers.service import servers_service
 
 router = APIRouter()
@@ -35,6 +35,25 @@ async def get_server(
 ):
     """Retrieve specific server credentials configuration metadata."""
     return await servers_service.get_server_by_id(session, server_id, current_user.id)
+
+@router.put("/{server_id}", response_model=ServerResponse)
+async def update_server(
+    server_id: int,
+    server_in: ServerUpdate,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session)
+):
+    """Update registry configuration metadata for a managed server."""
+    return await servers_service.update_server(session, server_id, server_in, current_user.id)
+
+@router.delete("/{server_id}")
+async def delete_server(
+    server_id: int,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session)
+):
+    """Delete a managed server registry."""
+    return await servers_service.delete_server(session, server_id, current_user.id)
 
 @router.post("/{server_id}/execute", response_model=CommandResponse)
 async def execute_command(

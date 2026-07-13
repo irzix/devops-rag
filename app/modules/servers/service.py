@@ -1,3 +1,4 @@
+import asyncio
 import asyncssh
 from typing import List, Optional
 from fastapi import HTTPException, status
@@ -6,7 +7,7 @@ from sqlmodel import select
 
 from app.core.security import encrypt_data, decrypt_data
 from app.modules.servers.models import Server
-from app.modules.servers.schema import ServerCreate
+from app.modules.servers.schema import ServerCreate, ServerUpdate
 
 class ServersService:
     async def create_server(self, session: AsyncSession, server_in: ServerCreate, owner_id: int) -> Server:
@@ -69,6 +70,44 @@ class ServersService:
             )
         return server
 
+    async def update_server(self, session: AsyncSession, server_id: int, server_in: ServerUpdate, owner_id: int) -> Server:
+        """Update an existing server registry configuration."""
+        server = await self.get_server_by_id(session, server_id, owner_id)
+        
+        if server_in.name is not None and server_in.name != server.name:
+            # Ensure name is unique if changed
+            statement = select(Server).where(Server.name == server_in.name)
+            result = await session.exec(statement)
+            if result.first():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Server name already registered"
+                )
+            server.name = server_in.name
+
+        if server_in.ip_address is not None:
+            server.ip_address = server_in.ip_address
+        if server_in.ssh_port is not None:
+            server.ssh_port = server_in.ssh_port
+        if server_in.ssh_username is not None:
+            server.ssh_username = server_in.ssh_username
+        if server_in.ssh_auth_type is not None:
+            server.ssh_auth_type = server_in.ssh_auth_type
+        if server_in.credential is not None:
+            server.encrypted_credential = encrypt_data(server_in.credential)
+
+        session.add(server)
+        await session.commit()
+        await session.refresh(server)
+        return server
+
+    async def delete_server(self, session: AsyncSession, server_id: int, owner_id: int) -> dict:
+        """Delete an existing server registry."""
+        server = await self.get_server_by_id(session, server_id, owner_id)
+        await session.delete(server)
+        await session.commit()
+        return {"status": "success", "message": f"Server {server_id} deleted successfully"}
+
     async def execute_ssh_command(self, server: Server, command: str) -> dict:
         """
         Decrypt server connection credentials, establish SSH tunnel,
@@ -99,14 +138,22 @@ class ServersService:
                 )
 
         try:
-            # Connect and execute command using asyncssh
-            async with asyncssh.connect(**conn_args) as conn:
-                result = await conn.run(command, check=False)
-                return {
-                    "stdout": result.stdout,
-                    "stderr": result.stderr,
-                    "exit_code": result.exit_status
-                }
+            # Connect and execute command using asyncssh with 30s timeout
+            async def run_command_with_ssh():
+                async with asyncssh.connect(**conn_args) as conn:
+                    result = await conn.run(command, check=False)
+                    return {
+                        "stdout": result.stdout,
+                        "stderr": result.stderr,
+                        "exit_code": result.exit_status
+                    }
+            
+            return await asyncio.wait_for(run_command_with_ssh(), timeout=30.0)
+        except asyncio.TimeoutError:
+            raise HTTPException(
+                status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                detail=f"SSH execution timed out after 30 seconds on {server.ip_address}"
+            )
         except (asyncssh.Error, OSError) as e:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
