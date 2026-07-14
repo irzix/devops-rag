@@ -519,7 +519,7 @@ def read_memory_node(state: AgentState) -> dict:
         f"{context.knowledge}\n\n"
         f"=== PRIOR session summaries ===\n{context.episodic}"
     )
-    return {"memory_context": context_str}
+    return {"memory_context": context_str, "retry_count": 0}
 
 async def agent_node(state: AgentState, config: RunnableConfig) -> dict:
     """Run reasoning using model bound with tools."""
@@ -579,6 +579,61 @@ async def tools_node(state: AgentState) -> dict:
             
     return {"messages": tool_messages}
 
+async def evaluator_node(state: AgentState) -> dict:
+    """
+    Inspects the outcomes of tool executions.
+    If a tool failed (e.g. non-zero exit code or error output), and retry_count < 3,
+    we can flag it for self-correction.
+    """
+    retry_count = state.get("retry_count", 0)
+    messages = state["messages"]
+    
+    # Get the last batch of ToolMessages
+    last_tool_messages = []
+    for msg in reversed(messages):
+        if isinstance(msg, ToolMessage):
+            last_tool_messages.append(msg)
+        else:
+            break
+            
+    has_failure = False
+    failure_details = []
+    
+    for msg in last_tool_messages:
+        content = str(msg.content)
+        is_fail = False
+        
+        # Check for non-zero exit code in bash execution outputs
+        if "Exit Code:" in content:
+            import re
+            match = re.search(r"[Ee]xit\s+[Cc]ode:\s*(-?\d+)", content)
+            if match:
+                code = int(match.group(1))
+                if code != 0:
+                    is_fail = True
+        elif "Error executing tool" in content or content.startswith("Error:"):
+            is_fail = True
+        elif "Traceback (most recent call last)" in content:
+            is_fail = True
+            
+        if is_fail:
+            has_failure = True
+            failure_details.append(f"Tool '{msg.name}' failed: {content}")
+            
+    if has_failure and retry_count < 3:
+        new_retry_count = retry_count + 1
+        feedback_msg = (
+            f"ATTENTION: A tool call failed. Please inspect the error and try to correct it "
+            f"using a different method, alternative parameters, or fixing the command. "
+            f"Error details:\n" + "\n".join(failure_details) + f"\n(Self-correction attempt {new_retry_count}/3)"
+        )
+        return {
+            "retry_count": new_retry_count,
+            "messages": [SystemMessage(content=feedback_msg)]
+        }
+        
+    return {}
+
 async def write_memory_node(state: AgentState) -> dict:
     """Async background task for facts extraction, consolidation, and summarization."""
     owner_id = state.get("owner_id")
@@ -600,6 +655,7 @@ def build_graph(checkpointer=None):
     graph.add_node("read_memory", read_memory_node)
     graph.add_node("agent", agent_node)
     graph.add_node("tools", tools_node)
+    graph.add_node("evaluator", evaluator_node)
     graph.add_node("write_memory", write_memory_node)
     
     graph.set_entry_point("read_memory")
@@ -608,7 +664,8 @@ def build_graph(checkpointer=None):
         "tools": "tools",
         "write_memory": "write_memory"
     })
-    graph.add_edge("tools", "agent")
+    graph.add_edge("tools", "evaluator")
+    graph.add_edge("evaluator", "agent")
     graph.add_edge("write_memory", END)
     
     return graph.compile(checkpointer=checkpointer)
