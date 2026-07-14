@@ -58,13 +58,15 @@ Unlike standard AI chat wrappers that forget previous troubleshooting sessions, 
 
 ## Key Features
 - **Experiential Learning (ExpeL / Reflexion Postmortems):** Distills complex debugging sessions into structured `Lessons Learned` cards indexed into ChromaDB with zero-click context injection.
+- **Self-Correction (Evaluator Node):** Automatic detection of tool execution failures (e.g. non-zero exit codes or system errors) in LangGraph, routing execution back to the agent with error details for self-healing (up to 3 retry attempts).
+- **Negative Feedback Reflexion:** Submitting negative feedback (thumbs-down) on AI responses triggers a background LLM Reflexion pipeline to analyze the failure, extract a lesson, and store it in ChromaDB's `LessonStore` to avoid repeating the mistake.
 - **Lean RAG Knowledge Base:** Automatically chunks and indexes executed SSH command outputs, logs, and server configs into separate **ChromaDB** collections.
 - **Semantic Guardrails:** Uses local vector search to intercept and block dangerous terminal commands.
 - **Human-in-the-Loop (HITL):** Enforces admin approval (`[y/N]`) inside the terminal for any state-modifying actions.
 - **CLI Connection Resilience:** Automatically reconnects to the WebSocket server using exponential backoff if the network drops or the server restarts.
 - **Real-Time Streaming:** Streams LLM thoughts and active SSH `stdout`/`stderr` line-by-line using WebSockets with 30s execution timeouts.
 - **Encrypted Credentials:** Securely encrypts passwords and SSH private keys using Fernet (AES-256).
-- **Server & Session CRUD:** Full REST API support for updating/deleting server connections and deleting chat sessions.
+- **Server & Session CRUD & Feedback:** Full REST API support for managing server connections, deleting sessions, and submitting user satisfaction ratings.
 - **Flexible AI Models:** Powered by **OpenRouter** (supports Llama 3, Gemini, GPT, etc.).
 
 ---
