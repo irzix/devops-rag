@@ -6,11 +6,15 @@ import asyncssh
 from typing import List, Tuple
 from fastapi import HTTPException, status
 from langchain_openai import ChatOpenAI
-from langchain.agents import create_agent
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
 from langchain_core.tools import tool
 from langchain_core.callbacks import AsyncCallbackHandler
+from langchain_core.runnables import RunnableConfig
 from sqlmodel import select
+from langgraph.graph import StateGraph, END
+from langgraph.types import interrupt
+from app.modules.memory.types import AgentState
+from app.modules.memory.manager import memory_manager
 
 from app.core.config import settings
 from app.core.database import async_session_maker
@@ -180,8 +184,16 @@ async def execute_ssh_command(server_id: int | str, command: str) -> str:
                 "command": command
             })
             
-            # Return special status string to halt agent execution loop
-            return f"PAUSED: REQUIRES_APPROVAL: {action_id}"
+            # Native LangGraph interrupt
+            resumed_data = interrupt({
+                "type": "approval_required",
+                "action_id": action_id,
+                "server_name": server.name,
+                "command": command
+            })
+            
+            if not resumed_data or not resumed_data.get("approved"):
+                return "Execution Blocked: Command rejected by user."
 
         # 3. Safe read-only execution: connect and stream output line-by-line
         owner_id = active_owner_id.get()
@@ -492,32 +504,117 @@ IMPORTANT INSTRUCTIONS:
 8. Be concise and report the final outputs clearly.
 """
 
-def create_agent_executor(callbacks=None):
-    """Initialize agent compiled StateGraph using modern LangChain create_agent."""
-    llm = get_llm(callbacks=callbacks)
-    return create_agent(
-        model=llm,
-        tools=tools,
-        system_prompt=system_prompt
+# Map tools list to dict for node execution
+tools_dict = {t.name: t for t in tools}
+
+def read_memory_node(state: AgentState) -> dict:
+    """Retrieve episodic summaries, general knowledge, and user specifications."""
+    last_msg = state["messages"][-1]
+    query = last_msg.content if isinstance(last_msg.content, str) else str(last_msg.content)
+    
+    context = memory_manager.read_context(query, owner_id=state["owner_id"])
+    
+    context_str = (
+        f"=== PAST incident lessons learned ===\n{context.lessons}\n\n"
+        f"{context.knowledge}\n\n"
+        f"=== PRIOR session summaries ===\n{context.episodic}"
     )
+    return {"memory_context": context_str}
+
+async def agent_node(state: AgentState, config: RunnableConfig) -> dict:
+    """Run reasoning using model bound with tools."""
+    llm = get_llm()
+    llm_with_tools = llm.bind_tools(tools)
+    
+    mem_ctx = state.get("memory_context", "")
+    
+    # Enrich the baseline system instructions with retrieved context
+    enriched_system_prompt = (
+        f"{system_prompt}\n\n"
+        f"CRITICAL: Utilize the following memory context to customize your behaviour "
+        f"and avoid previously encountered errors:\n\n{mem_ctx}"
+    )
+    
+    messages = [SystemMessage(content=enriched_system_prompt)] + state["messages"]
+    response = await llm_with_tools.ainvoke(messages, config=config)
+    return {"messages": [response]}
+
+async def tools_node(state: AgentState) -> dict:
+    """Execute tools synchronously or handle human-in-the-loop dynamic interrupt for dangerous commands."""
+    last_message = state["messages"][-1]
+    tool_calls = last_message.tool_calls
+    tool_messages = []
+    
+    for tool_call in tool_calls:
+        tool_name = tool_call["name"]
+        tool_args = tool_call["args"]
+        tool_id = tool_call["id"]
+        
+        if tool_name not in tools_dict:
+            tool_messages.append(ToolMessage(
+                content=f"Error: Tool {tool_name} not found.",
+                tool_call_id=tool_id
+            ))
+            continue
+            
+
+        
+        # Execute tool
+        try:
+            tool_func = tools_dict[tool_name]
+            if asyncio.iscoroutinefunction(tool_func):
+                result = await tool_func(**tool_args)
+            else:
+                result = tool_func(**tool_args)
+            
+            tool_messages.append(ToolMessage(
+                content=str(result),
+                tool_call_id=tool_id
+            ))
+        except Exception as e:
+            tool_messages.append(ToolMessage(
+                content=f"Error executing tool {tool_name}: {str(e)}",
+                tool_call_id=tool_id
+            ))
+            
+    return {"messages": tool_messages}
+
+async def write_memory_node(state: AgentState) -> dict:
+    """Async background task for facts extraction, consolidation, and summarization."""
+    owner_id = state.get("owner_id")
+    session_id = state.get("session_id")
+    if owner_id and session_id:
+        asyncio.create_task(
+            memory_manager.write_after_turn(state["messages"], owner_id, session_id)
+        )
+    return {}
+
+def route_after_agent(state: AgentState) -> str:
+    last_msg = state["messages"][-1]
+    if hasattr(last_msg, "tool_calls") and last_msg.tool_calls:
+        return "tools"
+    return "write_memory"
+
+def build_graph(checkpointer=None):
+    graph = StateGraph(AgentState)
+    graph.add_node("read_memory", read_memory_node)
+    graph.add_node("agent", agent_node)
+    graph.add_node("tools", tools_node)
+    graph.add_node("write_memory", write_memory_node)
+    
+    graph.set_entry_point("read_memory")
+    graph.add_edge("read_memory", "agent")
+    graph.add_conditional_edges("agent", route_after_agent, {
+        "tools": "tools",
+        "write_memory": "write_memory"
+    })
+    graph.add_edge("tools", "agent")
+    graph.add_edge("write_memory", END)
+    
+    return graph.compile(checkpointer=checkpointer)
+
+def create_agent_executor(callbacks=None, checkpointer=None):
+    """Maintain backward-compatible agent instantiation interface."""
+    return build_graph(checkpointer=checkpointer)
 
 
-def inject_experiential_memory(prompt: str) -> str:
-    """
-    Zero-Click ExpeL Auto-Retrieval:
-    Automatically searches past structured lessons learned and injects them directly into the prompt context.
-    Ensures the 'Retrieve Next Time -> Future Decision' loop is 100% systemic and guaranteed.
-    """
-    try:
-        retrieved_lessons = service_search_lessons(prompt, n_results=2)
-        if "No matching lessons" not in retrieved_lessons and "No lessons learned recorded" not in retrieved_lessons:
-            return (
-                f"{prompt}\n\n"
-                f"[⚡ AUTO-RETRIEVED EXPERIENTIAL MEMORY (ExpeL) ⚡]\n"
-                f"Relevant past troubleshooting postmortems automatically retrieved for your current task:\n"
-                f"{retrieved_lessons}\n"
-                f"CRITICAL INSTRUCTION: Review 'What didn't work' and 'What worked' above. Do NOT repeat dead ends.\n"
-            )
-        return prompt
-    except Exception:
-        return prompt
