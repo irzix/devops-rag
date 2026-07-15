@@ -10,7 +10,9 @@ from langchain_core.callbacks import AsyncCallbackHandler
 from langchain_core.runnables import RunnableConfig
 from sqlmodel import select
 from langgraph.graph import StateGraph, END
+from langgraph.prebuilt import ToolNode
 from langgraph.types import interrupt
+from langgraph.errors import GraphInterrupt
 from app.core.llm import get_llm, get_llm_non_streaming  # noqa: F401 (re-exported for modules that import from here)
 from app.modules.memory.types import AgentState
 from app.modules.memory.manager import memory_manager
@@ -286,6 +288,8 @@ async def execute_ssh_command(server_id: int | str, command: str) -> str:
             return await asyncio.wait_for(run_with_timeout(), timeout=30.0)
         except asyncio.TimeoutError:
             return f"Error: Command execution timed out after 30 seconds on {server.name}."
+    except GraphInterrupt:
+        raise
     except Exception as e:
         return f"Tool Execution Error: {str(e)}"
 
@@ -581,6 +585,8 @@ async def tools_node(state: AgentState) -> dict:
                 content=str(result),
                 tool_call_id=tool_id
             ))
+        except GraphInterrupt:
+            raise
         except Exception as e:
             tool_messages.append(ToolMessage(
                 content=f"Error executing tool {tool_name}: {str(e)}",
