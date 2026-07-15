@@ -3,6 +3,7 @@ import logging
 from langchain_core.messages import SystemMessage, HumanMessage
 from app.modules.memory.stores import LessonStore
 from app.core.database import async_session_maker
+from app.core.llm import get_llm_non_streaming
 from app.modules.chat.models import ChatMessage
 from sqlmodel import select
 
@@ -85,7 +86,7 @@ async def reflect_on_negative_feedback(
             target_ai_message=target_ai_message,
         )
 
-        llm = get_llm()
+        llm = get_llm_non_streaming()
         response = await llm.ainvoke([
             SystemMessage(content=formatted_prompt),
             HumanMessage(content="CONVERSATION TRANSCRIPT:\n" + "\n".join(transcript_lines)),

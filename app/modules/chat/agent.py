@@ -3,9 +3,7 @@ import uuid
 import asyncio
 import contextvars
 import asyncssh
-from typing import List, Tuple
 from fastapi import HTTPException, status
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
 from langchain_core.tools import tool
 from langchain_core.callbacks import AsyncCallbackHandler
@@ -13,6 +11,7 @@ from langchain_core.runnables import RunnableConfig
 from sqlmodel import select
 from langgraph.graph import StateGraph, END
 from langgraph.types import interrupt
+from app.core.llm import get_llm, get_llm_non_streaming  # noqa: F401 (re-exported for modules that import from here)
 from app.modules.memory.types import AgentState
 from app.modules.memory.manager import memory_manager
 
@@ -66,23 +65,6 @@ class StreamingCallbackHandler(AsyncCallbackHandler):
         except Exception:
             pass
 
-def get_llm(callbacks=None) -> ChatOpenAI:
-    """Initialize OpenRouter LLM client with streaming support."""
-    if not settings.OPENROUTER_API_KEY:
-        raise ValueError("OPENROUTER_API_KEY is not configured in environment")
-        
-    return ChatOpenAI(
-        openai_api_key=settings.OPENROUTER_API_KEY,
-        openai_api_base="https://openrouter.ai/api/v1",
-        model=settings.OPENROUTER_MODEL,
-        temperature=0.0,  # Zero temperature for deterministic system operations
-        streaming=True,
-        callbacks=callbacks or [],
-        default_headers={
-            "HTTP-Referer": "https://github.com/irzix/devops-copilot",
-            "X-Title": "DevOps Copilot Agent"
-        }
-    )
 
 def is_write_command(command: str) -> bool:
     """

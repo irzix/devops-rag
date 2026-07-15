@@ -1,6 +1,7 @@
 import json
 from langchain_core.messages import SystemMessage, HumanMessage
 from app.modules.memory.types import ExtractedFact
+from app.core.llm import get_llm_non_streaming
 
 class ExtractionPipeline:
     async def run(self, messages: list, owner_id: int) -> list[ExtractedFact]:
@@ -36,7 +37,7 @@ If no important facts, preferences, or relationships were mentioned/revealed in 
 Output ONLY valid JSON code. Do NOT enclose in markdown formatting.
 """
         try:
-            llm = get_llm()
+            llm = get_llm_non_streaming()
             response = await llm.ainvoke([
                 SystemMessage(content=prompt),
                 HumanMessage(content=f"TRANSCRIPT:\n{transcript}")

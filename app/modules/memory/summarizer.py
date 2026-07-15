@@ -1,5 +1,6 @@
 from langchain_core.messages import SystemMessage, HumanMessage
 from app.modules.memory.stores import EpisodicStore
+from app.core.llm import get_llm_non_streaming
 
 class EpisodicSummarizer:
     async def maybe_summarize(self, session_id: int, messages: list, owner_id: int):
@@ -26,7 +27,7 @@ Summarize:
 Keep it under 150 words. Output ONLY the summary text. No intro/outro.
 """
         try:
-            llm = get_llm()
+            llm = get_llm_non_streaming()
             response = await llm.ainvoke([
                 SystemMessage(content=prompt),
                 HumanMessage(content=f"SESSION TRANSCRIPT:\n{transcript}")
