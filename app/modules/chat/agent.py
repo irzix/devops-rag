@@ -556,13 +556,11 @@ async def tools_node(state: AgentState) -> dict:
             
 
         
-        # Execute tool
+        # Execute tool via LangChain's official async interface.
+        # tools_dict values are StructuredTool objects — never call them directly.
         try:
             tool_func = tools_dict[tool_name]
-            if asyncio.iscoroutinefunction(tool_func):
-                result = await tool_func(**tool_args)
-            else:
-                result = tool_func(**tool_args)
+            result = await tool_func.ainvoke(tool_args)
             
             tool_messages.append(ToolMessage(
                 content=str(result),
