@@ -50,6 +50,7 @@ from app.modules.knowledge.service import (
 active_websocket = contextvars.ContextVar("active_websocket")
 active_session_id = contextvars.ContextVar("active_session_id")
 active_owner_id = contextvars.ContextVar("active_owner_id")
+active_tool_call_id = contextvars.ContextVar("active_tool_call_id")
 
 class StreamingCallbackHandler(AsyncCallbackHandler):
     """Callback handler to stream LLM generation tokens directly to the active WebSocket."""
@@ -139,7 +140,12 @@ async def execute_ssh_command(server_id: int | str, command: str) -> str:
 
         # 2. Enforce human verification for state-modifying actions
         if is_write_command(command):
-            action_id = f"act_{uuid.uuid4().hex[:12]}"
+            try:
+                # Use the active tool_call_id to make the action_id deterministic across graph resumes
+                action_id = f"act_{active_tool_call_id.get().replace('-', '')[:12]}"
+            except LookupError:
+                action_id = f"act_{uuid.uuid4().hex[:12]}"
+
             sess_id = active_session_id.get()
             owner_id = active_owner_id.get()
             
@@ -160,26 +166,30 @@ async def execute_ssh_command(server_id: int | str, command: str) -> str:
                         server = await servers_service.get_server_by_name(session, str(server_id), owner_id)
                 except Exception:
                     return f"Error: Server '{server_id}' not found or permission denied."
+                # Check if this action was already queued (in case of a graph resume re-execution)
+                stmt = select(AgentAction).where(AgentAction.id == action_id)
+                existing_action = (await session.exec(stmt)).first()
                 
-                # Record the pending action in database
-                action = AgentAction(
-                    id=action_id,
-                    session_id=sess_id,
-                    server_id=server.id,
-                    command=command,
-                    status="pending"
-                )
-                session.add(action)
-                await session.commit()
-                
-            # Emit approval notification to WebSocket client
-            ws = active_websocket.get()
-            await ws.send_json({
-                "type": "approval_required",
-                "action_id": action_id,
-                "server_name": server.name,
-                "command": command
-            })
+                if not existing_action:
+                    # Record the pending action in database
+                    action = AgentAction(
+                        id=action_id,
+                        session_id=sess_id,
+                        server_id=server.id,
+                        command=command,
+                        status="pending"
+                    )
+                    session.add(action)
+                    await session.commit()
+                    
+                    # Emit approval notification to WebSocket client
+                    ws = active_websocket.get()
+                    await ws.send_json({
+                        "type": "approval_required",
+                        "action_id": action_id,
+                        "server_name": server.name,
+                        "command": command
+                    })
             
             # Native LangGraph interrupt
             resumed_data = interrupt({
@@ -555,12 +565,17 @@ async def tools_node(state: AgentState) -> dict:
             continue
             
 
-        
         # Execute tool via LangChain's official async interface.
         # tools_dict values are StructuredTool objects — never call them directly.
         try:
             tool_func = tools_dict[tool_name]
-            result = await tool_func.ainvoke(tool_args)
+            
+            # Set deterministic tool call ID context for interrupts
+            tool_token = active_tool_call_id.set(tool_id)
+            try:
+                result = await tool_func.ainvoke(tool_args)
+            finally:
+                active_tool_call_id.reset(tool_token)
             
             tool_messages.append(ToolMessage(
                 content=str(result),
