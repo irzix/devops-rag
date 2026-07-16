@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block page_title %}Managed Servers{% endblock %}
+
+{% block content %}
+<div x-data="dashboard">
+    <div class="flex justify-between items-center mb-4">
+        <h2 style="margin: 0;">Servers</h2>
+        <button class="btn btn-primary" @click="showAddModal = true">+ Add Server</button>
+    </div>
+
+    <div x-show="loading" class="text-muted">Loading servers...</div>
+    
+    <div x-show="!loading && servers.length === 0" class="card">
+        <p class="text-muted">No servers found. Add a server to start monitoring.</p>
+    </div>
+
+    <div class="grid-3" x-show="!loading && servers.length > 0">
+        <template x-for="server in servers" :key="server.server_id">
+            <div class="card">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 style="margin:0;" x-text="server.server_name"></h3>
+                    <span class="badge" 
+                          :class="'badge-' + server.status" 
+                          x-text="server.status.toUpperCase()"></span>
+                </div>
+                
+                <div class="grid-2 mb-4" style="gap: 1rem;">
+                    <div>
+                        <div class="text-muted" style="font-size:0.875rem;">CPU Usage</div>
+                        <div style="font-size:1.15rem; font-weight:600;" x-text="server.cpu_percent != null ? server.cpu_percent + '%' : 'N/A'"></div>
+                    </div>
+                    <div>
+                        <div class="text-muted" style="font-size:0.875rem;">Memory Usage</div>
+                        <div style="font-size:1.15rem; font-weight:600;" x-text="server.memory_percent != null ? server.memory_percent + '%' : 'N/A'"></div>
+                    </div>
+                    <div>
+                        <div class="text-muted" style="font-size:0.875rem;">Disk Usage</div>
+                        <div style="font-size:1.15rem; font-weight:600;" x-text="server.disk_percent != null ? server.disk_percent + '%' : 'N/A'"></div>
+                    </div>
+                    <div>
+                        <div class="text-muted" style="font-size:0.875rem;">Latency</div>
+                        <div style="font-size:1.15rem; font-weight:600;" x-text="server.response_time_ms != null ? server.response_time_ms + ' ms' : 'N/A'"></div>
+                    </div>
+                </div>
+
+                <div class="text-muted mb-4" style="font-size:0.75rem;">
+                    Last Checked: <span x-text="server.checked_at ? new Date(server.checked_at).toLocaleString() : 'Never'"></span>
+                </div>
+
+                <div x-show="server.error_message" class="mb-4" style="background: rgba(255, 71, 87, 0.1); border-left: 3px solid var(--danger); padding: 0.75rem; border-radius: 4px;">
+                    <div style="font-size:0.75rem; color: var(--danger); font-weight:600; margin-bottom: 0.25rem;">Error</div>
+                    <div style="font-size:0.85rem; word-break: break-all;" x-text="server.error_message"></div>
+                </div>
+
+                <div class="flex gap-2" style="gap: 0.5rem; flex-wrap: wrap;">
+                    <button class="btn btn-sm" style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text-main);" @click="openHistory(server)">📊 History</button>
+                    <a href="/chat" class="btn btn-sm">Chat with Agent</a>
+                    <button class="btn btn-sm" style="color: var(--danger); border-color: var(--danger);" @click="deleteServer(server.server_id)">Delete</button>
+                </div>
+            </div>
+        </template>
+    </div>
+
+    <!-- Add Server Modal -->
+    <div class="modal-backdrop" x-show="showAddModal" style="display: none;">
+        <div class="modal" @click.away="showAddModal = false">
+            <div class="modal-header">
+                Add New Server
+                <button class="btn btn-sm" @click="showAddModal = false" style="border:none; background:transparent; font-size:1.2rem;">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form @submit.prevent="addServer" id="add-server-form">
+                    <div class="form-group">
+                        <label class="form-label">Server Name</label>
+                        <input type="text" x-model="newServer.name" class="form-control" required placeholder="e.g. prod-web-1">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">IP Address</label>
+                        <input type="text" x-model="newServer.ip_address" class="form-control" required placeholder="e.g. 192.168.1.100">
+                    </div>
+                    <div class="flex gap-4">
+                        <div class="form-group w-full">
+                            <label class="form-label">SSH Port</label>
+                            <input type="number" x-model.number="newServer.ssh_port" class="form-control" required>
+                        </div>
+                        <div class="form-group w-full">
+                            <label class="form-label">Username</label>
+                            <input type="text" x-model="newServer.ssh_username" class="form-control" required>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Auth Type</label>
+                        <select x-model="newServer.ssh_auth_type" class="form-control">
+                            <option value="password">Password</option>
+                            <option value="key">Private Key</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" x-text="newServer.ssh_auth_type === 'key' ? 'Private Key' : 'Password'"></label>
+                        <textarea x-show="newServer.ssh_auth_type === 'key'" x-model="newServer.credential" class="form-control" rows="4" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----..."></textarea>
+                        <input x-show="newServer.ssh_auth_type === 'password'" type="password" x-model="newServer.credential" class="form-control" placeholder="Server password">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Tags (comma separated)</label>
+                        <input type="text" x-model="newServer.tags" class="form-control" placeholder="production, web, linux">
+                    </div>
+                    <div x-show="error" class="text-muted mt-4" style="color: var(--danger);" x-text="error"></div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn" @click="showAddModal = false">Cancel</button>
+                <button type="submit" form="add-server-form" class="btn btn-primary" :disabled="submitting">
+                    <span x-text="submitting ? 'Adding...' : 'Add Server'"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- History Chart Modal -->
+    <div class="modal-backdrop" x-show="showHistoryModal" style="display: none;">
+        <div class="modal" @click.away="closeHistory()" style="max-width: 800px; width: 90%;">
+            <div class="modal-header">
+                History: <span x-text="activeServer?.server_name"></span>
+                <button class="btn btn-sm" @click="closeHistory()" style="border:none; background:transparent; font-size:1.2rem;">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div x-show="historyLoading" class="text-muted text-center py-4">Loading history...</div>
+                <div x-show="!historyLoading && historyData.length === 0" class="text-muted text-center py-4">No history data available.</div>
+                
+                <div x-show="!historyLoading && historyData.length > 0" style="position: relative; height: 350px; width: 100%;">
+                    <canvas id="historyChart"></canvas>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn" @click="closeHistory()">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

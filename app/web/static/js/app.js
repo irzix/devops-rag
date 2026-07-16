@@ -7,6 +7,7 @@ document.addEventListener('alpine:init', () => {
     Alpine.data('app', () => ({
         token: localStorage.getItem('token'),
         theme: localStorage.getItem('theme') || 'dark',
+        sidebarOpen: false,
 
         init() {
             if (!this.token && window.location.pathname !== '/login') {
@@ -58,9 +59,28 @@ document.addEventListener('alpine:init', () => {
             credential: '',
             tags: ''
         },
+        
+        // Summary Widget state
+        summary: { total: 0, healthy: 0, degraded: 0, offline: 0 },
+        
+        // History Modal state
+        showHistoryModal: false,
+        activeServer: null,
+        historyLoading: false,
+        historyData: [],
+        chartInstance: null,
 
         async init() {
             await this.fetchServers();
+        },
+
+        calculateSummary() {
+            this.summary = {
+                total: this.servers.length,
+                healthy: this.servers.filter(s => s.status === 'healthy').length,
+                degraded: this.servers.filter(s => s.status === 'degraded').length,
+                offline: this.servers.filter(s => s.status === 'unreachable' || s.status === 'unknown').length,
+            };
         },
 
         async fetchServers() {
@@ -69,6 +89,7 @@ document.addEventListener('alpine:init', () => {
                 const res = await this.apiFetch('/api/v1/monitoring/status');
                 if (res.ok) {
                     this.servers = await res.json();
+                    this.calculateSummary();
                 }
             } catch (e) {
                 console.error("Failed to load dashboard data", e);
@@ -115,6 +136,95 @@ document.addEventListener('alpine:init', () => {
             } catch (e) {
                 console.error("Failed to delete server", e);
             }
+        },
+
+        async openHistory(server) {
+            this.activeServer = server;
+            this.showHistoryModal = true;
+            this.historyLoading = true;
+            this.historyData = [];
+            
+            try {
+                const res = await this.apiFetch(`/api/v1/monitoring/${server.server_id}/history?limit=30`);
+                if (res.ok) {
+                    this.historyData = await res.json();
+                    // The API returns desc order. Let's reverse it for the chart so time goes left to right.
+                    this.historyData.reverse();
+                    this.renderChart();
+                }
+            } catch(e) {
+                console.error("Failed to fetch history", e);
+            } finally {
+                this.historyLoading = false;
+            }
+        },
+
+        closeHistory() {
+            this.showHistoryModal = false;
+            this.activeServer = null;
+            if (this.chartInstance) {
+                this.chartInstance.destroy();
+                this.chartInstance = null;
+            }
+        },
+
+        renderChart() {
+            if (this.chartInstance) {
+                this.chartInstance.destroy();
+            }
+
+            // Wait for alpine to show canvas
+            setTimeout(() => {
+                const ctx = document.getElementById('historyChart');
+                if (!ctx) return;
+
+                const labels = this.historyData.map(d => {
+                    const dt = new Date(d.checked_at);
+                    return dt.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                });
+
+                const cpuData = this.historyData.map(d => d.cpu_percent || 0);
+                const memData = this.historyData.map(d => d.memory_percent || 0);
+
+                this.chartInstance = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: 'CPU Usage (%)',
+                                data: cpuData,
+                                borderColor: 'rgba(54, 162, 235, 1)',
+                                backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                                fill: true,
+                                tension: 0.4
+                            },
+                            {
+                                label: 'Memory Usage (%)',
+                                data: memData,
+                                borderColor: 'rgba(255, 99, 132, 1)',
+                                backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                                fill: true,
+                                tension: 0.4
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                max: 100
+                            }
+                        },
+                        interaction: {
+                            mode: 'index',
+                            intersect: false,
+                        }
+                    }
+                });
+            }, 100);
         }
     }));
 

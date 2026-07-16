@@ -5,18 +5,31 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DevOps Copilot</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=2">
-    <!-- Alpine.js & Marked.js -->
+    <link rel="stylesheet" href="/static/css/style.css?v=6">
+    <!-- Alpine.js, Marked.js, Chart.js -->
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script src="/static/js/app.js?v=2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="/static/js/app.js?v=6"></script>
 </head>
 <body x-data="app">
     
     {% block layout %}
-    <div class="sidebar">
+    <!-- Mobile Header -->
+    <div class="mobile-header justify-between items-center px-4" style="border-bottom: 1px solid var(--border);">
+        <div style="font-weight: 700; font-size: 1.1rem;">🚀 DevOps Copilot</div>
+        <button class="btn btn-sm" @click="sidebarOpen = !sidebarOpen" style="font-size: 1.5rem; background: transparent; border: none; padding: 0.25rem;">
+            ☰
+        </button>
+    </div>
+
+    <!-- Mobile Sidebar Backdrop -->
+    <div class="sidebar-backdrop" x-show="sidebarOpen" @click="sidebarOpen = false" x-transition.opacity style="display: none;"></div>
+
+    <div class="sidebar" :class="{'open': sidebarOpen}">
         <div class="sidebar-logo">🚀 DevOps Copilot</div>
         <a href="/" class="nav-link {% if request.url.path == '/' %}active{% endif %}">Dashboard</a>
+        <a href="/servers" class="nav-link {% if request.url.path == '/servers' %}active{% endif %}">Servers</a>
         <a href="/chat" class="nav-link {% if request.url.path == '/chat' %}active{% endif %}">Chat Console</a>
         <a href="/settings" class="nav-link {% if request.url.path == '/settings' %}active{% endif %}">Settings</a>
         <div style="flex:1"></div>

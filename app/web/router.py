@@ -19,3 +19,7 @@ async def settings_page(request: Request):
 @router.get("/login")
 async def login_page(request: Request):
     return templates.TemplateResponse(request=request, name="login.html")
+
+@router.get("/servers")
+async def servers_page(request: Request):
+    return templates.TemplateResponse(request=request, name="servers.html")
