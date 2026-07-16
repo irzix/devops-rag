@@ -10,7 +10,13 @@ class Settings(BaseSettings):
     # Key for encrypting target server credentials (SSH passwords/private keys)
     ENCRYPTION_KEY: str = "h-0rAgfuXQnNinQ9yZevWRvRNv9_nWdixhHG_DZGmoE="
     
-    # OpenRouter API configurations for AI Agent
+    # Ollama (local, free — preferred for development and contributors)
+    # Set OLLAMA_BASE_URL to enable local LLM inference without any API key.
+    # Example: OLLAMA_BASE_URL=http://localhost:11434/v1
+    OLLAMA_BASE_URL: str | None = None
+    OLLAMA_MODEL: str = "qwen2.5:7b"
+
+    # OpenRouter API configurations for AI Agent (cloud — requires API key)
     OPENROUTER_API_KEY: str | None = None
     OPENROUTER_MODEL: str = "google/gemini-2.5-flash"
 
