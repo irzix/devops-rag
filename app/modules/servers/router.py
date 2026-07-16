@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, status
-from typing import List
+from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
@@ -21,11 +21,30 @@ async def create_server(
 
 @router.get("/", response_model=List[ServerResponse])
 async def list_servers(
+    tag: Optional[str] = None,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session)
 ):
-    """Retrieve all managed servers registered to the current administrator."""
-    return await servers_service.get_all_servers(session, current_user.id)
+    """Retrieve all managed servers registered to the current administrator. Optionally filter by tag."""
+    servers = await servers_service.get_all_servers(session, current_user.id)
+    if tag:
+        # Filter servers where the tag is exactly matched in the comma-separated list
+        servers = [s for s in servers if s.tags and tag in [t.strip() for t in s.tags.split(',')]]
+    return servers
+
+@router.get("/tags", response_model=List[str])
+async def get_server_tags(
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session)
+):
+    """Retrieve a list of unique tags across all servers."""
+    servers = await servers_service.get_all_servers(session, current_user.id)
+    tags = set()
+    for s in servers:
+        if s.tags:
+            for t in s.tags.split(','):
+                tags.add(t.strip())
+    return sorted(list(tags))
 
 @router.get("/{server_id}", response_model=ServerResponse)
 async def get_server(

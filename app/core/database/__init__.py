@@ -17,6 +17,7 @@ async_session_maker = sessionmaker(
 _MIGRATIONS = [
     ("chatmessage", "feedback_rating",  "TEXT DEFAULT NULL"),
     ("chatmessage", "feedback_comment", "TEXT DEFAULT NULL"),
+    ("server", "tags", "TEXT DEFAULT ''"),
 ]
 
 async def _run_schema_migrations(conn) -> None:

@@ -11,6 +11,8 @@ class ServerCreate(BaseModel):
     
     # Raw password or private key string. Will be encrypted before database storage.
     credential: str = Field(..., min_length=1)
+    
+    tags: str = Field(default="")
 
 class ServerUpdate(BaseModel):
     """DTO for updating an existing managed server connection."""
@@ -20,6 +22,7 @@ class ServerUpdate(BaseModel):
     ssh_username: str | None = None
     ssh_auth_type: Literal["password", "key"] | None = None
     credential: str | None = None
+    tags: str | None = None
 
 class ServerResponse(BaseModel):
     """Safe database projection returning public server parameters (excludes credentials)."""
@@ -29,6 +32,7 @@ class ServerResponse(BaseModel):
     ssh_port: int
     ssh_username: str
     ssh_auth_type: str
+    tags: str
     owner_id: int
 
     class Config:

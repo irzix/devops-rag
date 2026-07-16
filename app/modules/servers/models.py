@@ -26,5 +26,8 @@ class Server(SQLModel, table=True):
     # AES-encrypted password string or private key string
     encrypted_credential: str = Field(nullable=False)
     
+    # Comma-separated list of tags (e.g. "production,web") for grouping and multi-execution
+    tags: str = Field(default="")
+    
     # Owner relation to user table
     owner_id: int = Field(foreign_key="user.id", nullable=False)

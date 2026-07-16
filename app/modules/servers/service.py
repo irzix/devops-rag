@@ -32,6 +32,7 @@ class ServersService:
             ssh_username=server_in.ssh_username,
             ssh_auth_type=server_in.ssh_auth_type,
             encrypted_credential=encrypted_cred,
+            tags=server_in.tags,
             owner_id=owner_id
         )
 
@@ -95,6 +96,8 @@ class ServersService:
             server.ssh_auth_type = server_in.ssh_auth_type
         if server_in.credential is not None:
             server.encrypted_credential = encrypt_data(server_in.credential)
+        if server_in.tags is not None:
+            server.tags = server_in.tags
 
         session.add(server)
         await session.commit()
