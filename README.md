@@ -1,158 +1,147 @@
 # DevOps Copilot 🚀
 
-**An autonomous, self-learning AI DevOps Assistant & CLI Client that manages bare-metal servers with Memory-First Architecture, Experiential Learning (`ExpeL`), Semantic Guardrails, and Real-Time SSH Tunneling.**
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![CI](https://github.com/irzix/devops-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/irzix/devops-rag/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/devops-copilot.svg)](https://pypi.org/project/devops-copilot/)
+
+**An autonomous, self-learning AI DevOps agent that manages bare-metal servers with Memory-First Architecture, Experiential Learning, and Real-Time SSH Tunneling.**
+
+<!-- 
+🎬 DEMO GIF HERE
+Record with: vhs or asciinema
+![DevOps Copilot Demo](docs/demo.gif) 
+-->
 
 ---
 
-## 💡 About The Project
+## ⚡ What Makes This Different?
 
-Managing infrastructure via traditional CLI tools or basic AI wrappers often leads to dangerous mistakes, repetitive debugging dead-ends, and fragmented server logs. **DevOps Copilot** redefines server management by combining a **Memory-First Agent Architecture** with **Closed-Loop Experiential Learning (ExpeL)** directly in your terminal.
+Unlike standard AI chat wrappers that forget previous troubleshooting sessions, DevOps Copilot **learns from every incident** and **never repeats dead ends**:
 
-Unlike standard AI chat wrappers that forget previous troubleshooting sessions, `DevOps Copilot` builds a permanent, structured **ChromaDB Vector Knowledge Base** of your infrastructure:
-
-- **🧠 Memory-First Architecture:** A multi-store memory system (`SemanticStore`, `LessonStore`, `EpisodicStore`, `UserFactStore`, `ProceduralStore`) that reads context before every agent turn and writes extracted facts after each interaction — ensuring the agent remembers your servers, preferences, and past incidents across sessions.
-- **🔁 LangGraph StateGraph Agent:** Fully stateful agent built on LangGraph with dedicated nodes for memory retrieval (`read_memory`), reasoning (`agent`), tool execution (`tools`), self-correction (`evaluator`), and memory persistence (`write_memory`).
-- **🧠 Zero-Click Experiential Learning (ExpeL & Reflexion):** Every time an incident or bug is diagnosed and resolved, the agent distills the entire session into a structured Postmortem (`Problem`, `Real Cause`, `What didn't work`, `What worked`). Before tackling new errors, relevant past lessons are **automatically retrieved and injected** into the agent's context—ensuring it *never repeats a dead end*.
-- **🔍 LangSmith Observability:** Full tracing of every graph node, tool call, memory read/write, human-in-the-loop interrupt, and self-correction retry — all via environment variables with zero code changes.
-- **🛡️ Semantic Security Guardrails:** Local vector search intercepts and blocks catastrophic shell commands (e.g., `rm -rf /`, `mkfs`) before they ever touch your servers.
-- **🧑‍💻 Human-in-the-Loop (HITL) Approvals:** State-modifying actions dynamically prompt for explicit admin confirmation (`[y/N]`) inside the terminal using LangGraph's native `interrupt` mechanism.
-- **⚡ Real-Time Async Execution Tunnel:** Streams LLM reasoning, SSH `stdout`, and `stderr` line-by-line via resilient WebSockets with automatic reconnection and exponential backoff.
-- **🔒 Zero-Trust Credential Encryption:** Passwords and SSH private keys are encrypted at rest using AES-256 (`Fernet`).
+| Feature | Traditional Tools | DevOps Copilot |
+|---------|------------------|----------------|
+| Memory across sessions | ❌ | ✅ 7-store memory system |
+| Learns from past incidents | ❌ | ✅ ExpeL postmortems |
+| Blocks dangerous commands | ❌ | ✅ Semantic guardrails |
+| Self-corrects on failure | ❌ | ✅ 3-retry evaluator |
+| Requires approval for writes | ❌ | ✅ Human-in-the-loop |
 
 ---
 
-## 🏛️ System Architecture
+## 🚀 Quick Start (2 minutes)
 
-```
-+-----------------------------------------------------------------------------------+
-|                                 DevOps Copilot CLI                                |
-|  (Typer Async Client + Real-Time WebSocket Tunnel + [y/N] Terminal Approval)      |
-+-----------------------------------------------------------------------------------+
-                                   |           ^
-                   REST Auth/CRUD  |           | WebSocket Stream (stdout/stderr)
-                                   v           |
-+-----------------------------------------------------------------------------------+
-|                              FastAPI Backend Server                               |
-|                                                                                   |
-|  +------------------------+   +-----------------------+   +--------------------+  |
-|  |     Auth Module        |   |    Servers Module     |   | Guardrails Module  |  |
-|  |  (JWT & AES Fernet)    |   |  (AsyncSSH Execution) |   | (Vector Blacklist) |  |
-|  +------------------------+   +-----------------------+   +--------------------+  |
-|                                                                                   |
-|  +-----------------------------------------------------------------------------+  |
-|  |                     LangGraph StateGraph Agent                               |  |
-|  |                                                                              |  |
-|  |  read_memory ──> agent ──> tools ──> evaluator ──> agent ──> write_memory    |  |
-|  |       │                      │           │                        │           |  |
-|  |       │            ┌─────────┘           │ (self-correction ×3)   │           |  |
-|  |       ▼            ▼                                              ▼           |  |
-|  |  MemoryManager   SSH / Knowledge                          ExtractionPipeline  |  |
-|  |  (read_context)  Guardrails / HITL                       ConsolidationPipeline|  |
-|  |                                                          EpisodicSummarizer   |  |
-|  +-----------------------------------------------------------------------------+  |
-|                                       │                                           |
-|                                       ▼                                           |
-|  +-----------------------------------------------------------------------------+  |
-|  |                      ChromaDB Multi-Store Knowledge Base                     |  |
-|  |                                                                              |  |
-|  |  command_history │ server_logs │ server_configs │ lessons_learned            |  |
-|  |  episodic_summaries │ user_facts │ procedural_tools                          |  |
-|  +-----------------------------------------------------------------------------+  |
-|                                                                                   |
-|  +-----------------------------------+                                            |
-|  |   LangSmith Tracing (Optional)    |                                            |
-|  |   Full graph & tool observability |                                            |
-|  +-----------------------------------+                                            |
-+-----------------------------------------------------------------------------------+
-```
+### Option A: Local with Ollama (Free, No API Key)
 
-### The LangGraph Agent Flow
-
-1. **`read_memory`** — Retrieves episodic summaries, lessons learned, user facts, and knowledge from ChromaDB before the agent reasons.
-2. **`agent`** — LLM reasoning node (OpenRouter) with all tools bound. Decides next action or generates final response.
-3. **`tools`** — Executes tools (`execute_ssh_command`, `search_knowledge`, `fetch_server_logs`, etc.) via `ainvoke()`.
-4. **`evaluator`** — Inspects tool results. Routes back to `agent` for self-correction on failures (up to 3 retries). Skips non-retryable infrastructure errors (SSH timeouts, auth failures).
-5. **`write_memory`** — Background extraction of facts, preferences, and episodic summaries via non-streaming LLM.
-
-### The Closed-Loop Experiential Learning (`ExpeL`) Flow
-
-1. **Observe & Act:** Agent connects via `AsyncSSH`, runs non-destructive diagnostics or approved actions, and indexes outputs into `command_history` and `server_logs`.
-2. **Judge & Extract:** When an incident is resolved, the postmortem endpoint triggers an automated LLM extraction (`Problem`, `Real Cause`, `What didn't work`, `What worked`) stored in `lessons_learned`.
-3. **Zero-Click Injection:** On any future chat turn, `read_memory` queries `lessons_learned` and injects proven solutions directly into the agent's system prompt context.
-
----
-
-## Key Features
-
-- **Memory-First Agent Architecture:** Multi-store retrieval (`SemanticStore`, `LessonStore`, `EpisodicStore`, `UserFactStore`) on every turn with automatic fact extraction, consolidation, and episodic summarization after each interaction.
-- **LangGraph StateGraph:** Fully stateful agent with dedicated nodes for memory I/O, tool execution, and self-correction — replacing the legacy agent loop.
-- **Experiential Learning (ExpeL / Reflexion Postmortems):** Distills complex debugging sessions into structured `Lessons Learned` cards indexed into ChromaDB with zero-click context injection.
-- **Self-Correction (Evaluator Node):** Automatic detection of tool execution failures (e.g. non-zero exit codes) in LangGraph, routing execution back to the agent with error details for self-healing (up to 3 retry attempts). Terminal infrastructure errors (SSH refused, auth failure) bypass retry.
-- **Negative Feedback Reflexion:** Submitting negative feedback (thumbs-down) on AI responses triggers a background LLM Reflexion pipeline to analyze the failure, extract a lesson, and store it in ChromaDB's `LessonStore`.
-- **LangSmith Observability:** Full tracing of LangGraph execution, tool calls, memory nodes, and interrupts — enabled via environment variables with zero code changes.
-- **Lean RAG Knowledge Base:** Automatically chunks and indexes executed SSH command outputs, logs, and server configs into separate **ChromaDB** collections (7 stores total).
-- **Semantic Guardrails:** Uses local vector search to intercept and block dangerous terminal commands.
-- **Human-in-the-Loop (HITL):** Enforces admin approval (`[y/N]`) via LangGraph's native `interrupt` mechanism for state-modifying actions.
-- **Auto Schema Migration:** Automatically detects and adds new database columns on startup without manual migration scripts.
-- **CLI Connection Resilience:** Automatically reconnects to the WebSocket server using exponential backoff if the network drops.
-- **Real-Time Streaming:** Streams LLM thoughts and active SSH `stdout`/`stderr` line-by-line using WebSockets with 30s execution timeouts.
-- **Encrypted Credentials:** Securely encrypts passwords and SSH private keys using Fernet (AES-256).
-- **Server & Session CRUD & Feedback:** Full REST API support for managing server connections, deleting sessions, and submitting user satisfaction ratings.
-- **Flexible AI Models:** Powered by **OpenRouter** (supports Llama 3, Gemini, GPT, etc.).
-
----
-
-## 📦 Quick Start (Backend Server)
-
-### 1. Configure Settings
-Copy the env file and populate keys:
 ```bash
+# 1. Install Ollama → https://ollama.com/download
+ollama pull qwen2.5:7b
+
+# 2. Clone and configure
+git clone https://github.com/irzix/devops-rag.git
+cd devops-rag
 cp .env.example .env
+
+# 3. Run with Docker
+docker compose -f docker-compose.demo.yaml up -d
 ```
-Make sure to add your `OPENROUTER_API_KEY` and a custom base64 `ENCRYPTION_KEY` in `.env`.
 
-### 2. Enable LangSmith Tracing (Optional)
-Get your API key from [smith.langchain.com](https://smith.langchain.com) and add to `.env`:
+### Option B: Cloud with OpenRouter
+
 ```bash
-LANGSMITH_TRACING=true
-LANGSMITH_API_KEY=lsv2_pt_...
-LANGSMITH_PROJECT=devops-copilot
+# Same as above, but edit .env:
+# Comment out OLLAMA_BASE_URL
+# Set OPENROUTER_API_KEY=your_key_here
 ```
-> For EU data residency, set `LANGSMITH_ENDPOINT=https://eu.api.smith.langchain.com`
 
-### 3. Run with Docker Compose
+### Register & Start Chatting
+
 ```bash
-docker compose up -d --build
-```
-The server will boot on port `8000`. Database tables, schema migrations, and security blacklist vectors are automatically seeded on startup.
-
----
-
-## 💻 Quick Start (CLI Client)
-
-### 1. Install Globally
-Install the package in editable mode from your local repository root:
-```bash
+# Install CLI client
 uv pip install -e .
-```
 
-### 2. Authenticate
-Configure the server URL and log in to get your JWT access token:
-```bash
+# Create admin account
 devops-copilot login
-```
 
-### 3. Interactive Chat & Auto-Postmortems
-Start the real-time DevOps chat session:
-```bash
+# Start chatting with your servers
 devops-copilot chat
 ```
-*Ask the agent to check stats or run actions. Approve state-modifying commands directly in the prompt.*
 
-Extract and index a structured Experiential Lesson Learned from any completed troubleshooting session:
-```bash
-devops-copilot lesson <session_id>
+> 💡 **Try the demo**: The `docker-compose.demo.yaml` includes a sandboxed SSH server (`demo` / `demo123`) so you can experiment safely without real infrastructure.
+
+---
+
+## 🏛️ Architecture
+
 ```
+┌─────────────────────────────────────────────────────────────┐
+│                    DevOps Copilot CLI                        │
+│     (Typer + WebSocket Streaming + [y/N] Approval)          │
+└──────────────────────┬──────────────────────────────────────┘
+                       │ REST + WebSocket
+┌──────────────────────▼──────────────────────────────────────┐
+│                   FastAPI Backend                            │
+│                                                             │
+│   ┌──────────────────────────────────────────────────────┐  │
+│   │          LangGraph StateGraph Agent                   │  │
+│   │                                                      │  │
+│   │  read_memory → agent → tools → evaluator → agent     │  │
+│   │       │                  │         │           │      │  │
+│   │       ▼                  ▼         ▼           ▼      │  │
+│   │  MemoryManager    SSH/Knowledge   Self-       write   │  │
+│   │  (7 stores)       Guardrails     Correction   _memory │  │
+│   │                   HITL           (×3 retry)           │  │
+│   └──────────────────────────────────────────────────────┘  │
+│                                                             │
+│   ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌───────────┐  │
+│   │   Auth    │ │  Servers  │ │ Guardrails│ │ Knowledge │  │
+│   │  (JWT)    │ │ (AsyncSSH)│ │ (Vector)  │ │ (ChromaDB)│  │
+│   └───────────┘ └───────────┘ └───────────┘ └───────────┘  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### The Agent Flow
+
+1. **`read_memory`** — Retrieves lessons learned, episodic summaries, and user facts from ChromaDB
+2. **`agent`** — LLM reasoning with all tools bound (Ollama or OpenRouter)
+3. **`tools`** — Executes SSH commands, searches knowledge, fetches logs/configs
+4. **`evaluator`** — Detects failures, triggers self-correction (up to 3 retries)
+5. **`write_memory`** — Background extraction of facts and episodic summaries
+
+### Experiential Learning (ExpeL)
+
+```
+ Incident Occurs → Agent Diagnoses → Resolution Found
+                                           │
+                      ┌────────────────────▼────────────────────┐
+                      │         Automatic Postmortem             │
+                      │  Problem | Root Cause | What Worked      │
+                      │  What Didn't Work | Time to Resolve      │
+                      └────────────────────┬────────────────────┘
+                                           │
+                                    ChromaDB Index
+                                           │
+                      Next Similar Incident ▼
+                      ┌─────────────────────────────────────────┐
+                      │  "I've seen this before. Last time,      │
+                      │   restarting X didn't work but Y fixed   │
+                      │   it in 5 minutes. Let me try Y first."  │
+                      └─────────────────────────────────────────┘
+```
+
+---
+
+## ✨ Key Features
+
+- **🧠 Memory-First Architecture** — 7 ChromaDB stores (Semantic, Lesson, Episodic, UserFact, Procedural) with automatic read/write on every turn
+- **🔁 Experiential Learning (ExpeL)** — Structured postmortems indexed and auto-injected into future troubleshooting
+- **🛡️ Semantic Guardrails** — Vector search blocks dangerous commands (`rm -rf /`, `mkfs`, etc.) before execution
+- **🧑‍💻 Human-in-the-Loop** — Write commands require `[y/N]` approval via LangGraph's native `interrupt`
+- **🔄 Self-Correction** — Evaluator node retries failed commands up to 3 times with error context
+- **⚡ Real-Time Streaming** — SSH stdout/stderr streamed line-by-line via WebSocket
+- **🔒 Encrypted Credentials** — SSH passwords and keys encrypted at rest with Fernet (AES-256)
+- **📊 LangSmith Tracing** — Optional full observability of graph nodes, tools, and memory operations
+- **🦙 Ollama Support** — Run completely free and local with no API keys
 
 ---
 
@@ -163,7 +152,7 @@ app/
 ├── core/
 │   ├── config.py            # Pydantic settings (env vars)
 │   ├── database/            # Async SQLite engine + auto-migration
-│   ├── llm.py               # LLM factories (streaming & non-streaming)
+│   ├── llm.py               # LLM factories (Ollama + OpenRouter)
 │   └── security.py          # Fernet AES-256 encryption
 ├── modules/
 │   ├── auth/                # JWT authentication
@@ -176,13 +165,46 @@ app/
 │   │   ├── models.py        # ChatSession, ChatMessage, AgentAction
 │   │   └── schema.py        # Pydantic request/response schemas
 │   └── memory/
-│       ├── manager.py        # MemoryManager (read_context / write_after_turn)
-│       ├── stores.py         # 7 ChromaDB collection wrappers
-│       ├── extraction.py     # LLM fact extraction pipeline
-│       ├── consolidation.py  # Deduplication before persistence
-│       ├── summarizer.py     # Episodic session summarizer
-│       ├── reflexion.py      # Negative feedback analysis pipeline
-│       └── types.py          # AgentState, ExtractedFact, MemoryContext
-└── cli/                      # Typer CLI client
+│       ├── manager.py       # MemoryManager (read_context / write_after_turn)
+│       ├── stores.py        # 7 ChromaDB collection wrappers
+│       ├── extraction.py    # LLM fact extraction pipeline
+│       ├── consolidation.py # Deduplication before persistence
+│       ├── summarizer.py    # Episodic session summarizer
+│       ├── reflexion.py     # Negative feedback analysis pipeline
+│       └── types.py         # AgentState, ExtractedFact, MemoryContext
+├── cli/                     # Typer CLI client
+└── tests/                   # Unit & integration tests
 ```
 
+---
+
+## 🔧 Configuration
+
+### LLM Providers
+
+| Provider | Cost | Setup | Best For |
+|----------|------|-------|----------|
+| **Ollama** | Free | `ollama pull qwen2.5:7b` | Development, self-hosted |
+| **OpenRouter** | Pay-per-use | Get API key at [openrouter.ai](https://openrouter.ai) | Production, best models |
+
+### Environment Variables
+
+See [`.env.example`](.env.example) for all available configuration options.
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, coding standards, and guidelines.
+
+**Good first issues:**
+- Add more read-only command prefixes to `is_write_command()`
+- Expand the guardrails blacklist with more dangerous patterns
+- Add unit tests for existing modules
+- Improve CLI output formatting
+
+---
+
+## 📄 License
+
+[MIT](LICENSE) © [irzix](https://github.com/irzix)
