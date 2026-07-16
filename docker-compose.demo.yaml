@@ -1,0 +1,55 @@
+version: '3.8'
+
+# ──────────────────────────────────────────────────────────────
+# DevOps Copilot — Quick Demo
+# ──────────────────────────────────────────────────────────────
+# Starts the API server with a sandboxed SSH demo server.
+# No external API keys needed — uses Ollama for local LLM inference.
+#
+# Usage:
+#   1. Install Ollama: https://ollama.com/download
+#   2. Pull a model: ollama pull qwen2.5:7b
+#   3. Run: docker compose -f docker-compose.demo.yaml up -d
+#   4. Register: curl -X POST http://localhost:8000/api/v1/auth/register \
+#        -H "Content-Type: application/json" \
+#        -d '{"username": "admin", "password": "adminpass123"}'
+# ──────────────────────────────────────────────────────────────
+
+services:
+  api:
+    build: .
+    container_name: devops_copilot_api
+    ports:
+      - "8000:8000"
+    volumes:
+      - api_data:/app/data
+    environment:
+      # Use Ollama on the host machine (host.docker.internal resolves to host)
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434/v1
+      - OLLAMA_MODEL=qwen2.5:7b
+      - JWT_SECRET_KEY=demo_secret_key_change_in_production
+      - ENCRYPTION_KEY=ZGVtb19lbmNyeXB0aW9uX2tleV9jaGFuZ2VfaW5fcHJvZHVjdGlvbg==
+    depends_on:
+      - demo-server
+    restart: unless-stopped
+
+  # Sandboxed SSH server for safe experimentation
+  # Credentials: user=demo, password=demo123
+  demo-server:
+    image: lscr.io/linuxserver/openssh-server:latest
+    container_name: devops_copilot_demo_ssh
+    hostname: demo-server
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+      - USER_NAME=demo
+      - USER_PASSWORD=demo123
+      - PASSWORD_ACCESS=true
+      - SUDO_ACCESS=true
+    ports:
+      - "2222:2222"
+    restart: unless-stopped
+
+volumes:
+  api_data:
