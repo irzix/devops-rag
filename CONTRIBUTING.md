@@ -2,6 +2,11 @@
 
 Thank you for your interest in contributing to DevOps Copilot! 🚀
 
+By participating in this project, you agree to abide by our
+[Code of Conduct](CODE_OF_CONDUCT.md). If you discover a security
+vulnerability, please follow our [Security Policy](SECURITY.md) instead of
+opening a public issue.
+
 ## Quick Start for Contributors
 
 ### Prerequisites
