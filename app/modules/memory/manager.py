@@ -13,7 +13,12 @@ async def get_learner(owner_id: int) -> Learner:
         await global_store.initialize()
         _store_initialized = True
         
-    evaluator = LLMEvaluator()
+    # Read model from environment variables and prepend 'openrouter/' for LiteLLM
+    model_name = os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-flash")
+    if not model_name.startswith("openrouter/"):
+        model_name = f"openrouter/{model_name}"
+        
+    evaluator = LLMEvaluator(model=model_name)
     
     return Learner(
         store=global_store,
